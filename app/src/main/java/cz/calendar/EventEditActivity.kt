@@ -17,14 +17,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -82,11 +82,14 @@ class EventEditActivity : ComponentActivity() {
 
 private val dateFormat = DateTimeFormatter.ofPattern("EEE d. M. yyyy", czech)
 private val timeFormat = DateTimeFormatter.ofPattern("HH:mm")
+private val priorityOptions = Priority.entries.map { it to it.label }
 
 private fun defaultCalendar(calendars: List<CalendarInfo>, lastUsed: Long): CalendarInfo? {
     val writable = calendars.filter { it.writable }
     return writable.find { it.id == lastUsed } ?: writable.find { it.primary } ?: writable.firstOrNull()
 }
+
+private data class Loaded(val calendars: List<CalendarInfo>, val draft: EventDraft?, val attendees: List<Attendee>)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -103,35 +106,41 @@ private fun EventEditScreen(
 
     var loading by remember { mutableStateOf(true) }
     var calendars by remember { mutableStateOf(emptyList<CalendarInfo>()) }
+    var statuses by remember { mutableStateOf(emptyList<Attendee>()) }
     var original by remember { mutableStateOf<EventDraft?>(null) }
     var draft by remember { mutableStateOf<EventDraft?>(null) }
     var showDelete by remember { mutableStateOf(false) }
+    var showSaveChoice by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        val (allCalendars, loaded) = withContext(Dispatchers.IO) {
+        val loaded = withContext(Dispatchers.IO) {
             val all = repository.calendars()
             val event = if (eventId != null) {
-                repository.event(eventId)
+                repository.event(eventId, instanceBegin)?.copy(priority = settings.priority(eventId))
             } else {
                 defaultCalendar(all, settings.lastCalendar)?.let { EventDraft.new(it.id, day) }
             }
-            all to event
+            Loaded(all, event, eventId?.let { repository.attendees(it) }.orEmpty())
         }
-        if (eventId != null && loaded == null) {
+        if (eventId != null && loaded.draft == null) {
             onClose()
             return@LaunchedEffect
         }
-        calendars = allCalendars
-        original = loaded
-        draft = loaded
+        calendars = loaded.calendars
+        statuses = loaded.attendees
+        original = loaded.draft
+        draft = loaded.draft
         loading = false
     }
 
     // Runs a change on the calendar provider, then closes the editor
-    fun commit(action: () -> Unit) {
+    fun commit(priority: Priority? = null, action: () -> Long?) {
         scope.launch {
             val result = withContext(Dispatchers.IO) { runCatching(action) }
             if (result.isSuccess) {
+                val savedId = result.getOrNull()
+                if (savedId != null && priority != null) settings.setPriority(savedId, priority)
+                BackgroundWork.refreshNow(context)
                 onClose()
             } else {
                 Toast.makeText(context, "Změnu se nepodařilo uložit", Toast.LENGTH_LONG).show()
@@ -143,6 +152,12 @@ private fun EventEditScreen(
     val calendar = calendars.find { it.id == current?.calendarId }
     val editable = calendar?.writable == true
     val recurring = original?.rule != null
+    val occurrence = recurring && current?.instanceBegin != null
+
+    fun saveSeries(event: EventDraft) {
+        settings.lastCalendar = event.calendarId
+        commit(event.priority) { repository.saveEvent(event) }
+    }
 
     Scaffold(
         topBar = {
@@ -157,13 +172,15 @@ private fun EventEditScreen(
                             Icon(Icons.Default.Delete, contentDescription = "Smazat")
                         }
                     }
-                    if (current != null && editable) {
+                    if (current != null) {
                         TextButton(
                             enabled = current.isValid,
                             onClick = {
-                                val updateReminder = current.id == null || current.reminder != original?.reminder
-                                settings.lastCalendar = current.calendarId
-                                commit { repository.saveEvent(current, updateReminder) }
+                                when {
+                                    !editable -> commit(current.priority) { current.id }
+                                    occurrence -> showSaveChoice = true
+                                    else -> saveSeries(current)
+                                }
                             },
                         ) { Text("Uložit") }
                     }
@@ -181,6 +198,7 @@ private fun EventEditScreen(
                 else -> EventForm(
                     draft = current,
                     calendars = calendars.filter { it.writable || it.id == current.calendarId },
+                    statuses = statuses,
                     originalRule = original?.rule,
                     editable = editable,
                     canChangeCalendar = current.id == null,
@@ -189,6 +207,23 @@ private fun EventEditScreen(
                 )
             }
         }
+    }
+
+    if (showSaveChoice && current != null) {
+        AlertDialog(
+            onDismissRequest = { showSaveChoice = false },
+            title = { Text("Uložit opakovanou událost") },
+            text = { Text("Účastníci a opakování se mění jen u celé série.") },
+            confirmButton = {
+                Column(horizontalAlignment = Alignment.End) {
+                    TextButton(onClick = { commit(current.priority) { repository.saveOccurrence(current) } }) {
+                        Text("Jen tento výskyt")
+                    }
+                    TextButton(onClick = { saveSeries(current) }) { Text("Celou sérii") }
+                    TextButton(onClick = { showSaveChoice = false }) { Text("Zrušit") }
+                }
+            },
+        )
     }
 
     if (showDelete && current?.id != null) {
@@ -203,12 +238,12 @@ private fun EventEditScreen(
             },
             confirmButton = {
                 Column(horizontalAlignment = Alignment.End) {
-                    if (recurring && instanceBegin != null) {
-                        TextButton(onClick = { commit { repository.deleteOccurrence(id, instanceBegin) } }) {
+                    if (occurrence) {
+                        TextButton(onClick = { commit { repository.deleteOccurrence(id, current.instanceBegin!!); null } }) {
                             Text("Jen tento výskyt")
                         }
                     }
-                    TextButton(onClick = { commit { repository.deleteEvent(id) } }) {
+                    TextButton(onClick = { commit { repository.deleteEvent(id); null } }) {
                         Text(if (recurring) "Celou sérii" else "Smazat")
                     }
                     TextButton(onClick = { showDelete = false }) { Text("Zrušit") }
@@ -222,6 +257,7 @@ private fun EventEditScreen(
 private fun EventForm(
     draft: EventDraft,
     calendars: List<CalendarInfo>,
+    statuses: List<Attendee>,
     originalRule: String?,
     editable: Boolean,
     canChangeCalendar: Boolean,
@@ -233,9 +269,9 @@ private fun EventForm(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (!editable) {
-            Notice("Tento kalendář je jen pro čtení.")
-        } else if (recurring && draft.id != null) {
-            Notice("Změny se projeví u všech opakování. Začátek je datum prvního výskytu.")
+            Hint("Tento kalendář je jen pro čtení.")
+        } else if (recurring) {
+            Hint("Opakovaná událost. Při uložení vybereš, jestli změnit jen tento výskyt, nebo celou sérii.")
         }
 
         OutlinedTextField(
@@ -268,9 +304,8 @@ private fun EventForm(
             enabled = editable && canChangeCalendar,
         ) { onChange(draft.copy(calendarId = it)) }
         ChoiceRow("Opakování", repeatChoices(originalRule), draft.rule, editable) { onChange(draft.copy(rule = it)) }
-        ChoiceRow("Upozornění", reminderChoices(draft.reminder), draft.reminder, editable) {
-            onChange(draft.copy(reminder = it))
-        }
+        // Priority lives only in this app, so it can be set even for read-only calendars
+        ChoiceRow("Priorita", priorityOptions, draft.priority, enabled = true) { onChange(draft.copy(priority = it)) }
 
         OutlinedTextField(
             value = draft.location,
@@ -288,12 +323,57 @@ private fun EventForm(
             minLines = 3,
             modifier = Modifier.fillMaxWidth(),
         )
+
+        AttendeesSection(draft.attendees, statuses, editable) { onChange(draft.copy(attendees = it)) }
     }
 }
 
 @Composable
-private fun Notice(text: String) {
-    Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun AttendeesSection(
+    emails: List<String>,
+    statuses: List<Attendee>,
+    editable: Boolean,
+    onChange: (List<String>) -> Unit,
+) {
+    var newEmail by remember { mutableStateOf("") }
+
+    SectionTitle("Účastníci")
+    emails.forEach { email ->
+        val status = statuses.find { it.email.equals(email, ignoreCase = true) }?.statusLabel ?: "Nový"
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(email)
+                Hint(status)
+            }
+            if (editable) {
+                IconButton(onClick = { onChange(emails - email) }) {
+                    Icon(Icons.Default.Close, contentDescription = "Odebrat $email")
+                }
+            }
+        }
+    }
+    if (editable) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = newEmail,
+                onValueChange = { newEmail = it.trim() },
+                label = { Text("Přidat e-mail") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(
+                enabled = newEmail.contains('@') && emails.none { it.equals(newEmail, ignoreCase = true) },
+                onClick = {
+                    onChange(emails + newEmail)
+                    newEmail = ""
+                },
+            ) { Text("Přidat") }
+        }
+        Hint("Google může novým účastníkům poslat pozvánku.")
+    } else if (emails.isEmpty()) {
+        Hint("Žádní účastníci")
+    }
 }
 
 @Composable
@@ -313,36 +393,6 @@ private fun DateTimeRow(
         if (!allDay) {
             TextButton(enabled = enabled, onClick = { pickTime(context, value.toLocalTime()) { onChange(value.with(it)) } }) {
                 Text(value.format(timeFormat))
-            }
-        }
-    }
-}
-
-@Composable
-private fun <T> ChoiceRow(
-    label: String,
-    options: List<Pair<T, String>>,
-    selected: T,
-    enabled: Boolean,
-    onSelect: (T) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(1f))
-        Box {
-            TextButton(enabled = enabled, onClick = { expanded = true }) {
-                Text(options.find { it.first == selected }?.second.orEmpty())
-            }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                options.forEach { (value, name) ->
-                    DropdownMenuItem(
-                        text = { Text(name) },
-                        onClick = {
-                            expanded = false
-                            onSelect(value)
-                        },
-                    )
-                }
             }
         }
     }

@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings as SystemSettings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -31,8 +32,15 @@ import java.time.LocalDate
 
 private val calendarPermissions = arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
 
+// Asking for notifications exists only since Android 13
+private val notificationPermissions =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) arrayOf(Manifest.permission.POST_NOTIFICATIONS) else emptyArray()
+
 fun Context.hasCalendarAccess(): Boolean =
     calendarPermissions.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
+
+fun Context.canNotify(): Boolean =
+    notificationPermissions.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
 
 @Composable
 fun CalendarApp(
@@ -46,10 +54,13 @@ fun CalendarApp(
     var hasPermission by remember { mutableStateOf(context.hasCalendarAccess()) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         hasPermission = context.hasCalendarAccess()
+        BackgroundWork.refreshNow(context)
     }
 
     LaunchedEffect(Unit) {
-        if (!hasPermission) launcher.launch(calendarPermissions)
+        val missing = (calendarPermissions + notificationPermissions)
+            .filter { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        if (missing.isNotEmpty()) launcher.launch(missing.toTypedArray())
     }
 
     Surface(Modifier.fillMaxSize()) {

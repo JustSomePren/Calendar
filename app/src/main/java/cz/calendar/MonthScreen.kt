@@ -2,10 +2,12 @@ package cz.calendar
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -23,10 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -84,6 +83,15 @@ fun eventTextColor(event: CalendarEvent, default: Color): Color {
     }
 }
 
+// Day number takes the top 24dp, every event row below it 17dp
+private val dayHeader = 24.dp
+private val rowHeight = 17.dp
+
+private fun rowOffset(row: Int) = dayHeader + rowHeight * row + 1.dp
+
+val CalendarEvent.label: String
+    get() = if (important) "! $title" else title
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MonthScreen(
@@ -97,14 +105,10 @@ fun MonthScreen(
     val scope = rememberCoroutineScope()
     val pagerState = rememberPagerState(initialPage = START_PAGE) { START_PAGE * 2 }
 
-    var calendars by remember { mutableStateOf(emptyList<CalendarInfo>()) }
-    var hidden by remember { mutableStateOf(settings.hiddenCalendars) }
+    // Visibility and priorities change in other screens, so read them again on every refresh
+    val hidden = remember(refreshTick) { settings.hiddenCalendars }
+    val important = remember(refreshTick) { settings.eventsWithPriority(Priority.HIGH) }
     var selectedDay by remember { mutableStateOf<LocalDate?>(null) }
-    var showFilter by remember { mutableStateOf(false) }
-
-    LaunchedEffect(refreshTick) {
-        calendars = withContext(Dispatchers.IO) { repository.calendars() }
-    }
 
     LaunchedEffect(openDay) {
         openDay ?: return@LaunchedEffect
@@ -121,8 +125,8 @@ fun MonthScreen(
                     TextButton(onClick = { scope.launch { pagerState.animateScrollToPage(START_PAGE) } }) {
                         Text("Dnes")
                     }
-                    IconButton(onClick = { showFilter = true }) {
-                        Icon(Icons.Default.Menu, contentDescription = "Kalendáře")
+                    IconButton(onClick = { context.startActivity(Intent(context, SettingsActivity::class.java)) }) {
+                        Icon(Icons.Default.Settings, contentDescription = "Nastavení")
                     }
                 },
             )
@@ -139,8 +143,8 @@ fun MonthScreen(
                 val month = monthForPage(page)
                 val days = remember(month) { gridDays(month) }
                 var events by remember { mutableStateOf(emptyMap<LocalDate, List<CalendarEvent>>()) }
-                LaunchedEffect(month, refreshTick, hidden) {
-                    events = withContext(Dispatchers.IO) { repository.eventsByDay(days.first(), days.last(), hidden) }
+                LaunchedEffect(month, refreshTick) {
+                    events = withContext(Dispatchers.IO) { repository.eventsByDay(days.first(), days.last(), hidden, important) }
                 }
                 MonthGrid(month, days, events, onDayClick = { selectedDay = it })
             }
@@ -148,19 +152,7 @@ fun MonthScreen(
     }
 
     selectedDay?.let { day ->
-        DaySheet(day, repository, hidden, refreshTick, onDismiss = { selectedDay = null })
-    }
-
-    if (showFilter) {
-        CalendarFilterDialog(
-            calendars = calendars,
-            hidden = hidden,
-            onChange = {
-                hidden = it
-                settings.hiddenCalendars = it
-            },
-            onDismiss = { showFilter = false },
-        )
+        DaySheet(day, repository, hidden, important, refreshTick, onDismiss = { selectedDay = null })
     }
 }
 
@@ -189,45 +181,79 @@ private fun MonthGrid(
     Column(Modifier.fillMaxSize()) {
         days.chunked(7).forEach { week ->
             HorizontalDivider()
-            Row(Modifier.weight(1f)) {
-                week.forEach { day ->
-                    DayCell(
-                        day = day,
-                        inMonth = YearMonth.from(day) == month,
-                        events = events[day].orEmpty(),
-                        modifier = Modifier.weight(1f).fillMaxHeight().clickable { onDayClick(day) },
-                    )
-                }
-            }
+            WeekRow(week, month, events, onDayClick, Modifier.weight(1f))
         }
     }
 }
 
 @Composable
-private fun DayCell(day: LocalDate, inMonth: Boolean, events: List<CalendarEvent>, modifier: Modifier) {
-    BoxWithConstraints(modifier.alpha(if (inMonth) 1f else 0.4f).padding(horizontal = 1.dp)) {
-        val slots = ((maxHeight - 24.dp) / 17.dp).toInt()
-        val visible = events.fitInto(slots)
+private fun WeekRow(
+    week: List<LocalDate>,
+    month: YearMonth,
+    events: Map<LocalDate, List<CalendarEvent>>,
+    onDayClick: (LocalDate) -> Unit,
+    modifier: Modifier,
+) {
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val cellWidth = maxWidth / 7
+        val slots = ((maxHeight - dayHeader) / rowHeight).toInt()
+        val layout = remember(week, events, slots) { layoutWeek(week, events, slots) }
 
-        Column(Modifier.fillMaxWidth()) {
-            DayNumber(day)
-            visible.forEach { EventChip(it) }
-            if (events.size > visible.size) {
-                Text("+${events.size - visible.size}", style = chipStyle, modifier = Modifier.padding(start = 2.dp))
+        Row(Modifier.fillMaxSize()) {
+            week.forEachIndexed { col, day ->
+                DayCell(
+                    day = day,
+                    inMonth = YearMonth.from(day) == month,
+                    singles = layout.singles[col],
+                    hidden = layout.hidden[col],
+                    moreRow = layout.moreRow[col],
+                    modifier = Modifier.weight(1f).fillMaxHeight().clickable { onDayClick(day) },
+                )
             }
+        }
+
+        // Spanning events are drawn over the cells as one bar
+        layout.bars.forEach { bar ->
+            EventChip(
+                event = bar.event,
+                startsHere = bar.startsHere,
+                endsHere = bar.endsHere,
+                modifier = Modifier
+                    .offset(x = cellWidth * bar.fromCol, y = rowOffset(bar.row))
+                    .width(cellWidth * (bar.toCol - bar.fromCol + 1)),
+            )
         }
     }
 }
 
 @Composable
-private fun ColumnScope.DayNumber(day: LocalDate) {
+private fun DayCell(
+    day: LocalDate,
+    inMonth: Boolean,
+    singles: List<Pair<Int, CalendarEvent>>,
+    hidden: Int,
+    moreRow: Int,
+    modifier: Modifier,
+) {
+    Box(modifier.alpha(if (inMonth) 1f else 0.4f)) {
+        DayNumber(day, Modifier.align(Alignment.TopCenter))
+        singles.forEach { (row, event) ->
+            EventChip(event, startsHere = true, endsHere = true, modifier = Modifier.offset(y = rowOffset(row)).fillMaxWidth())
+        }
+        if (hidden > 0) {
+            Text("+$hidden", Modifier.offset(y = rowOffset(moreRow)).padding(start = 3.dp), style = chipStyle)
+        }
+    }
+}
+
+@Composable
+private fun DayNumber(day: LocalDate, modifier: Modifier) {
     val isToday = day == LocalDate.now()
     val colors = MaterialTheme.colorScheme
     Text(
         text = day.dayOfMonth.toString(),
-        modifier = Modifier
+        modifier = modifier
             .padding(top = 2.dp)
-            .align(Alignment.CenterHorizontally)
             .size(22.dp)
             .background(if (isToday) colors.primary else Color.Transparent, CircleShape),
         textAlign = TextAlign.Center,
@@ -242,16 +268,20 @@ private fun ColumnScope.DayNumber(day: LocalDate) {
 }
 
 @Composable
-private fun EventChip(event: CalendarEvent) {
+private fun EventChip(event: CalendarEvent, startsHere: Boolean, endsHere: Boolean, modifier: Modifier) {
     val color = Color(event.color)
     val filled = event.allDay || event.multiDay
+    val start = if (startsHere) 3.dp else 0.dp
+    val end = if (endsHere) 3.dp else 0.dp
     Text(
-        text = event.title,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 1.dp)
+        text = event.label,
+        modifier = modifier
             .height(16.dp)
-            .background(if (filled) color else color.copy(alpha = 0.2f), RoundedCornerShape(3.dp))
+            .padding(start = if (startsHere) 1.dp else 0.dp, end = if (endsHere) 1.dp else 0.dp)
+            .background(
+                if (filled) color else color.copy(alpha = 0.2f),
+                RoundedCornerShape(topStart = start, bottomStart = start, topEnd = end, bottomEnd = end),
+            )
             .padding(horizontal = 2.dp),
         style = chipStyle,
         color = eventTextColor(event, MaterialTheme.colorScheme.onSurface),
@@ -266,13 +296,14 @@ private fun DaySheet(
     day: LocalDate,
     repository: CalendarRepository,
     hidden: Set<Long>,
+    important: Set<Long>,
     refreshTick: Int,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
     var events by remember { mutableStateOf(emptyList<CalendarEvent>()) }
-    LaunchedEffect(day, refreshTick, hidden) {
-        events = withContext(Dispatchers.IO) { repository.eventsByDay(day, day, hidden)[day].orEmpty() }
+    LaunchedEffect(day, refreshTick) {
+        events = withContext(Dispatchers.IO) { repository.eventsByDay(day, day, hidden, important)[day].orEmpty() }
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -321,50 +352,8 @@ private fun EventRow(event: CalendarEvent, onClick: () -> Unit) {
         Spacer(Modifier.width(4.dp).height(36.dp).background(Color(event.color), RoundedCornerShape(2.dp)))
         Spacer(Modifier.width(12.dp))
         Column {
-            Text(event.title, style = MaterialTheme.typography.bodyLarge)
+            Text(event.label, style = MaterialTheme.typography.bodyLarge)
             Text(time, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
-}
-
-@Composable
-private fun CalendarFilterDialog(
-    calendars: List<CalendarInfo>,
-    hidden: Set<Long>,
-    onChange: (Set<Long>) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Hotovo") } },
-        title = { Text("Kalendáře") },
-        text = {
-            LazyColumn {
-                items(calendars) { calendar ->
-                    val checked = calendar.id !in hidden
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { onChange(if (checked) hidden + calendar.id else hidden - calendar.id) },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Checkbox(
-                            checked = checked,
-                            onCheckedChange = null,
-                            colors = CheckboxDefaults.colors(checkedColor = Color(calendar.color)),
-                            modifier = Modifier.padding(12.dp),
-                        )
-                        Column {
-                            Text(calendar.name)
-                            Text(
-                                calendar.account,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
-        },
-    )
 }

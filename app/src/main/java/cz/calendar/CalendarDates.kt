@@ -30,10 +30,6 @@ fun eventDays(begin: Long, end: Long, zone: ZoneId): ClosedRange<LocalDate> {
     return first..last
 }
 
-// Keeps room for a "+N" line when not everything fits
-fun <T> List<T>.fitInto(slots: Int): List<T> =
-    if (size > slots) take((slots - 1).coerceAtLeast(0)) else this
-
 // RFC 2445 durations as used by the calendar provider, e.g. P3600S, PT1H, P1D, P1W
 fun parseDuration(text: String?): Duration {
     val match = Regex("""[+-]?P(?:(\d+)W)?(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?""").matchEntire(text.orEmpty().trim())

@@ -13,24 +13,26 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import java.time.Duration
 
-private const val HOURLY = "widget-hourly"
-private const val WATCH = "widget-watch"
+private const val HOURLY = "refresh-hourly"
+private const val WATCH = "refresh-on-change"
 
-class WidgetUpdateWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+// Refreshes the widget and reminders whenever calendar data changes
+class RefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
+        EventNotifier.run(applicationContext)
         MonthWidget().updateAll(applicationContext)
         // A content trigger fires only once, so wait for the next change again
-        if (WATCH in tags) WidgetUpdates.watch(applicationContext, ExistingWorkPolicy.APPEND_OR_REPLACE)
+        if (WATCH in tags) BackgroundWork.watch(applicationContext, ExistingWorkPolicy.APPEND_OR_REPLACE)
         return Result.success()
     }
 }
 
-object WidgetUpdates {
+object BackgroundWork {
 
     fun start(context: Context) {
         // Hourly refresh also moves the "today" mark after midnight
-        val hourly = PeriodicWorkRequestBuilder<WidgetUpdateWorker>(Duration.ofHours(1)).build()
+        val hourly = PeriodicWorkRequestBuilder<RefreshWorker>(Duration.ofHours(1)).build()
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(HOURLY, ExistingPeriodicWorkPolicy.KEEP, hourly)
         watch(context, ExistingWorkPolicy.KEEP)
     }
@@ -40,7 +42,7 @@ object WidgetUpdates {
             .addContentUriTrigger(CalendarContract.CONTENT_URI, true)
             .setTriggerContentUpdateDelay(Duration.ofSeconds(5))
             .build()
-        val request = OneTimeWorkRequestBuilder<WidgetUpdateWorker>()
+        val request = OneTimeWorkRequestBuilder<RefreshWorker>()
             .setConstraints(constraints)
             .addTag(WATCH)
             .build()
@@ -48,13 +50,6 @@ object WidgetUpdates {
     }
 
     fun refreshNow(context: Context) {
-        WorkManager.getInstance(context).enqueue(OneTimeWorkRequestBuilder<WidgetUpdateWorker>().build())
-    }
-
-    fun stop(context: Context) {
-        WorkManager.getInstance(context).run {
-            cancelUniqueWork(HOURLY)
-            cancelUniqueWork(WATCH)
-        }
+        WorkManager.getInstance(context).enqueue(OneTimeWorkRequestBuilder<RefreshWorker>().build())
     }
 }

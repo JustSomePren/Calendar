@@ -37,6 +37,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         openDay.value = intent.dayExtra()
+        BackgroundWork.start(this)
 
         val repository = CalendarRepository(contentResolver)
         val settings = Settings(this)
@@ -60,7 +61,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         contentResolver.unregisterContentObserver(observer)
-        WidgetUpdates.refreshNow(this)
+        BackgroundWork.refreshNow(this)
         super.onStop()
     }
 }

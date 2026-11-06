@@ -72,16 +72,6 @@ class CalendarDatesTest {
     }
 
     @Test
-    fun fitIntoLeavesRoomForMoreLine() {
-        val items = listOf(1, 2, 3, 4, 5)
-
-        assertEquals(listOf(1, 2, 3, 4, 5), items.fitInto(5))
-        assertEquals(listOf(1, 2, 3), items.fitInto(4))
-        assertEquals(emptyList<Int>(), items.fitInto(0))
-        assertEquals(emptyList<Int>(), items.fitInto(-2))
-    }
-
-    @Test
     fun parsesProviderDurations() {
         assertEquals(Duration.ofHours(1), parseDuration("P3600S"))
         assertEquals(Duration.ofHours(1), parseDuration("PT1H"))

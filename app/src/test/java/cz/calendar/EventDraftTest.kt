@@ -50,18 +50,13 @@ class EventDraftTest {
     }
 
     @Test
-    fun reminderLabelsAreReadable() {
-        assertEquals("Bez upozornění", reminderLabel(null))
-        assertEquals("15 min předem", reminderLabel(15))
-        assertEquals("2 h předem", reminderLabel(120))
-        assertEquals("1 den předem", reminderLabel(1440))
-        assertEquals("2 dny předem", reminderLabel(2880))
-    }
+    fun movingOneOccurrenceShiftsTheSeries() {
+        val draft = EventDraft.new(1, day)
+        val seriesStart = draft.startMillis() - 7 * 24 * 3600_000L
+        val opened = draft.copy(instanceBegin = draft.startMillis(), seriesStart = seriesStart)
 
-    @Test
-    fun unusualReminderIsAddedToChoices() {
-        val choices = reminderChoices(15).map { it.first }
-
-        assertEquals(listOf(null, 0, 10, 15, 30, 60, 1440), choices)
+        assertEquals(seriesStart, opened.seriesStartMillis())
+        val moved = opened.copy(start = opened.start.plusHours(2), end = opened.end.plusHours(2))
+        assertEquals(seriesStart + 2 * 3600_000L, moved.seriesStartMillis())
     }
 }
