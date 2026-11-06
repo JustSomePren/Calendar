@@ -87,6 +87,20 @@ class NotifierTest {
     }
 
     @Test
+    fun changedOccurrenceFollowsMutedSeries() {
+        val series = soon(1, "Úklid")
+        FakeCalendarProvider.events.single { it[Events._ID] == series }[Events.DTSTART] = now - 7 * 24 * 3600_000L
+        FakeCalendarProvider.events.single { it[Events._ID] == series }[Events.DTEND] = now - 7 * 24 * 3600_000L + 3600_000L
+        val moved = soon(1, "Úklid jindy")
+        FakeCalendarProvider.event(moved)[Events.ORIGINAL_ID] = series
+        settings.setWatch(series, Watch.NEVER)
+
+        EventNotifier.run(app, now)
+
+        assertEquals(emptyList<String>(), shownTitles())
+    }
+
+    @Test
     fun muteButtonStopsFurtherReminders() {
         val weekly = soon(1, "Týdenní úklid")
         val mute = Intent(app, ReminderReceiver::class.java)

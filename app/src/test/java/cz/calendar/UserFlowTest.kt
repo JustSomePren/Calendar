@@ -136,17 +136,27 @@ class UserFlowTest {
     }
 
     @Test
-    fun muteWeeklyPersonalEvent() {
+    fun mutingOneOccurrenceMutesSeriesWithoutTouchingCalendar() {
         val weekly = addEvent("Úklid", mapOf(Events.RRULE to "FREQ=WEEKLY", Events.DTEND to null, Events.DURATION to "P3600S"))
 
         ActivityScenario.launch<EventEditActivity>(editor(weekly, at(9))).use {
             waitForText("Osobní kalendář: upozorní.")
             choose("Podle kalendáře", "Nikdy")
-            compose.onNodeWithText("Platí pro všechna opakování.").assertExists()
             compose.onNodeWithText("Uložit").performClick()
-            waitForText("Jen tento výskyt")
-            compose.onNodeWithText("Celou sérii").performClick()
             waitFor { settings.watch(weekly) == Watch.NEVER }
+        }
+        assertEquals(1, FakeCalendarProvider.events.size)
+    }
+
+    @Test
+    fun dayPanelShowsDatesOfLongEvents() {
+        addEvent("Konference Brno", mapOf(Events.DTSTART to at(9, today.minusDays(1)), Events.DTEND to at(17, today.plusDays(1))))
+        val intent = Intent(app, MainActivity::class.java).putExtra(EXTRA_DAY, today.toString())
+        val format = java.time.format.DateTimeFormatter.ofPattern("d. M.")
+
+        ActivityScenario.launch<MainActivity>(intent).use {
+            waitForText("Konference Brno")
+            waitForText("${today.minusDays(1).format(format)} 09:00 – ${today.plusDays(1).format(format)} 17:00")
         }
     }
 

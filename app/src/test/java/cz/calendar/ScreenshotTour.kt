@@ -19,7 +19,10 @@ import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.captureScreenRoboImage
 import kotlinx.coroutines.runBlocking
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Shadows
@@ -99,15 +102,29 @@ class ScreenshotTour {
         )
     )
 
-    // Background loading runs on other threads, so give it real time
-    private fun settle() = repeat(60) {
-        ShadowLooper.idleMainLooper(100, TimeUnit.MILLISECONDS)
-        Thread.sleep(50)
+    @get:Rule
+    val compose = createEmptyComposeRule()
+
+    // Loading runs on background threads, so wait until the expected text is on screen.
+    // Without it just give the screen time; some screens never report idle under native graphics.
+    private fun settle(expected: String?) {
+        if (expected != null) {
+            compose.waitUntil(15_000) { compose.onAllNodesWithText(expected, substring = true).fetchSemanticsNodes().isNotEmpty() }
+        }
+        repeat(if (expected == null) 60 else 10) {
+            ShadowLooper.idleMainLooper(100, TimeUnit.MILLISECONDS)
+            Thread.sleep(20)
+        }
     }
 
-    private inline fun <reified T : Activity> shot(name: String, intent: Intent = Intent(app, T::class.java), wholeScreen: Boolean = false) {
+    private inline fun <reified T : Activity> shot(
+        name: String,
+        expected: String?,
+        intent: Intent = Intent(app, T::class.java),
+        wholeScreen: Boolean = false,
+    ) {
         ActivityScenario.launch<T>(intent).use { scenario ->
-            settle()
+            settle(expected)
             scenario.onActivity {
                 // The whole screen includes dialogs and bottom sheets on top of the activity
                 if (wholeScreen) captureScreenRoboImage("build/shots/$name.png") else it.window.decorView.captureRoboImage("build/shots/$name.png")
@@ -122,39 +139,40 @@ class ScreenshotTour {
     }
 
     @Test
-    fun month() = shot<MainActivity>("01_month")
+    fun month() = shot<MainActivity>("01_month", "Zubař")
 
     @Test
     @Config(qualifiers = "w411dp-h914dp-night-xxhdpi")
-    fun monthDark() = shot<MainActivity>("02_month_dark")
+    fun monthDark() = shot<MainActivity>("02_month_dark", "Zubař")
 
     @Test
     fun dayPanel() = shot<MainActivity>(
         "03_day_panel",
+        "Porada týmu",
         Intent(app, MainActivity::class.java).putExtra(EXTRA_DAY, today.toString()),
         wholeScreen = true,
     )
 
     @Test
-    fun newEvent() = shot<EventEditActivity>("04_editor_new", editor())
+    fun newEvent() = shot<EventEditActivity>("04_editor_new", "Nová událost", editor())
 
     @Test
-    fun existingEvent() = shot<EventEditActivity>("05_editor_existing", editor(dentist))
+    fun existingEvent() = shot<EventEditActivity>("05_editor_existing", "jana@gmail.com", editor(dentist))
 
     @Test
-    fun recurringOccurrence() = shot<EventEditActivity>("06_editor_recurring", editor(standup, millis(today.withDayOfMonth(1), 8)))
+    fun recurringOccurrence() = shot<EventEditActivity>("06_editor_recurring", "Opakovaná událost", editor(standup, millis(today.withDayOfMonth(1), 8)))
 
     @Test
-    fun readOnlyEvent() = shot<EventEditActivity>("07_editor_read_only", editor(holiday))
+    fun readOnlyEvent() = shot<EventEditActivity>("07_editor_read_only", "jen pro čtení", editor(holiday))
 
     @Test
     @Config(qualifiers = "w411dp-h1800dp-xxhdpi")
-    fun settings() = shot<SettingsActivity>("08_settings")
+    fun settings() = shot<SettingsActivity>("08_settings", null)
 
     @Test
     fun noPermission() {
         Shadows.shadowOf(app).denyPermissions(android.Manifest.permission.READ_CALENDAR)
-        shot<MainActivity>("09_no_permission")
+        shot<MainActivity>("09_no_permission", null)
     }
 
     @Test

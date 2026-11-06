@@ -114,6 +114,45 @@ class RepositoryTest {
     }
 
     @Test
+    fun importOfSameEventFromTwoFilesAddsItOnce() {
+        val ics = "BEGIN:VEVENT\r\nSUMMARY:Oběd\r\nDTSTART:${day.toString().replace("-", "")}T120000\r\nEND:VEVENT"
+
+        assertEquals(1, repository.import(parseIcs(ics) + parseIcs(ics), 1))
+        assertEquals(1, FakeCalendarProvider.events.size)
+    }
+
+    @Test
+    fun importAttachesMovedOccurrenceToItsSeries() {
+        val text = listOf(
+            "BEGIN:VEVENT", "UID:joga", "RECURRENCE-ID:20261116T170000Z", "SUMMARY:Jóga",
+            "DTSTART:20261117T170000Z", "DTEND:20261117T180000Z", "END:VEVENT",
+            "BEGIN:VEVENT", "UID:joga", "SUMMARY:Jóga", "DTSTART:20261102T170000Z", "DTEND:20261102T180000Z",
+            "RRULE:FREQ=WEEKLY;COUNT=4", "EXDATE:20261109T170000Z", "END:VEVENT",
+        ).joinToString("\r\n")
+
+        assertEquals(2, repository.import(parseIcs(text), 1))
+
+        val series = FakeCalendarProvider.events.first { it[Events.RRULE] != null }
+        assertEquals("20261109T170000Z", series[Events.EXDATE])
+        val moved = FakeCalendarProvider.events.first { it[Events.RRULE] == null }
+        assertEquals(series[Events._ID], moved[Events.ORIGINAL_ID])
+        assertEquals(1794848400000L, moved[Events.ORIGINAL_INSTANCE_TIME])
+    }
+
+    @Test
+    fun turningSeriesIntoSingleEventKeepsShownOccurrence() {
+        val seriesId = repository.saveEvent(EventDraft.new(1, day).copy(rule = "FREQ=WEEKLY"))
+        val occurrence = (FakeCalendarProvider.event(seriesId)[Events.DTSTART] as Long) + 14 * 24 * 3600_000L
+
+        repository.saveEvent(repository.event(seriesId, occurrence)!!.copy(rule = null))
+
+        val row = FakeCalendarProvider.event(seriesId)
+        assertEquals(occurrence, row[Events.DTSTART])
+        assertEquals(occurrence + 3600_000L, row[Events.DTEND])
+        assertNull(row[Events.RRULE])
+    }
+
+    @Test
     fun spreadsMultiDayEventsAcrossDays() {
         repository.saveEvent(EventDraft.new(1, day).copy(title = "Hory", allDay = true, end = day.plusDays(2).atStartOfDay()))
 

@@ -117,7 +117,10 @@ private fun EventEditScreen(
         val loaded = withContext(Dispatchers.IO) {
             val all = repository.calendars()
             val event = if (eventId != null) {
-                repository.event(eventId, instanceBegin)?.copy(priority = settings.priority(eventId), watch = settings.watch(eventId))
+                repository.event(eventId, instanceBegin)?.let { event ->
+                    val series = event.originalId ?: eventId
+                    event.copy(priority = settings.priorityFor(eventId, series), watch = settings.watchFor(eventId, series))
+                }
             } else {
                 defaultCalendar(all, settings.lastCalendar)?.let { EventDraft.new(it.id, day) }
             }
@@ -135,11 +138,12 @@ private fun EventEditScreen(
     }
 
     // Runs a change on the calendar provider, then closes the editor
+    // Reminder choices stay with the opened event, for an occurrence that is its series
     fun commit(saved: EventDraft? = null, action: () -> Long?) {
         scope.launch {
             val result = withContext(Dispatchers.IO) { runCatching(action) }
             if (result.isSuccess) {
-                val savedId = result.getOrNull()
+                val savedId = saved?.id ?: result.getOrNull()
                 if (savedId != null && saved != null) {
                     settings.setPriority(savedId, saved.priority)
                     settings.setWatch(savedId, saved.watch)
@@ -157,6 +161,8 @@ private fun EventEditScreen(
     val editable = calendar?.writable == true
     val recurring = original?.rule != null
     val occurrence = recurring && current?.instanceBegin != null
+    val onlyLocalChanges = current != null && current.id != null &&
+        current.copy(priority = Priority.NORMAL, watch = Watch.AUTO) == original?.copy(priority = Priority.NORMAL, watch = Watch.AUTO)
     val autoHint = current?.let { event ->
         val upcoming = event.toUpcoming(calendar?.owner.orEmpty())
         val people = event.attendees.map { email -> statuses.find { it.email.equals(email, ignoreCase = true) } ?: Attendee(email, 0) }
@@ -187,7 +193,8 @@ private fun EventEditScreen(
                             enabled = current.isValid,
                             onClick = {
                                 when {
-                                    !editable -> commit(current) { current.id }
+                                    // Only reminder choices changed, nothing to write to the calendar
+                                    !editable || onlyLocalChanges -> commit(current) { current.id }
                                     occurrence -> showSaveChoice = true
                                     else -> saveSeries(current)
                                 }

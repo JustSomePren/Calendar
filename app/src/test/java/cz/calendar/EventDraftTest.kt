@@ -51,7 +51,7 @@ class EventDraftTest {
 
     @Test
     fun movingOneOccurrenceShiftsTheSeries() {
-        val draft = EventDraft.new(1, day)
+        val draft = EventDraft.new(1, day).copy(rule = "FREQ=WEEKLY")
         val seriesStart = draft.startMillis() - 7 * 24 * 3600_000L
         val opened = draft.copy(instanceBegin = draft.startMillis(), seriesStart = seriesStart)
 

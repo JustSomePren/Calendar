@@ -58,9 +58,10 @@ class IcsImportTest {
 
     @Test
     fun readsSamsungExport() {
-        val events = parseIcs(samsungExport, zone)
+        val events = parseIcs(samsungExport, zone).filter { it.recurrenceId == null }.map { it.draft }
 
         assertEquals(listOf("Zubař, kontrola", "Dovolená", "Fotbal"), events.map { it.title })
+        assertEquals(listOf("Fotbal přesunut"), parseIcs(samsungExport, zone).filter { it.recurrenceId != null }.map { it.draft.title })
 
         val dentist = events[0]
         assertEquals(LocalDateTime.of(2026, 11, 10, 9, 0), dentist.start)
@@ -83,7 +84,23 @@ class IcsImportTest {
     @Test
     fun unfoldsLongLines() {
         val text = "BEGIN:VEVENT\r\nSUMMARY:Dlouhý\r\n  název\r\nDTSTART:20261110T090000\r\nEND:VEVENT"
-        assertEquals("Dlouhý název", parseIcs(text, zone).single().title)
+        assertEquals("Dlouhý název", parseIcs(text, zone).single().draft.title)
+    }
+
+    @Test
+    fun keepsSkippedAndMovedOccurrences() {
+        val text = listOf(
+            "BEGIN:VEVENT", "UID:joga", "SUMMARY:Jóga", "DTSTART:20261102T170000Z", "DTEND:20261102T180000Z",
+            "RRULE:FREQ=WEEKLY;COUNT=4", "EXDATE;TZID=Europe/Prague:20261109T180000", "END:VEVENT",
+            "BEGIN:VEVENT", "UID:joga", "RECURRENCE-ID:20261116T170000Z", "SUMMARY:Jóga",
+            "DTSTART:20261117T170000Z", "DTEND:20261117T180000Z", "END:VEVENT",
+        ).joinToString("\r\n")
+
+        val (series, moved) = parseIcs(text, zone)
+        assertEquals("20261109T170000Z", series.draft.excludedDates)
+        assertEquals("joga", moved.uid)
+        assertEquals(LocalDateTime.of(2026, 11, 16, 18, 0).atZone(zone).toInstant().toEpochMilli(), moved.recurrenceId)
+        assertEquals(LocalDateTime.of(2026, 11, 17, 18, 0), moved.draft.start)
     }
 
     @Test

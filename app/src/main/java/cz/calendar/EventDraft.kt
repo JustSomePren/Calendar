@@ -17,6 +17,8 @@ data class EventDraft(
     // For all-day events this is the last day, inclusive
     val end: LocalDateTime,
     val rule: String? = null,
+    // Skipped occurrences, kept only when importing
+    val excludedDates: String? = null,
     val priority: Priority = Priority.NORMAL,
     val watch: Watch = Watch.AUTO,
     // Read only, empty for new events (they will be mine)
@@ -25,6 +27,8 @@ data class EventDraft(
     // Set when a recurring event was opened from one of its occurrences
     val instanceBegin: Long? = null,
     val seriesStart: Long? = null,
+    // Set for an occurrence that was changed on its own
+    val originalId: Long? = null,
 ) {
     val isValid: Boolean
         get() = if (allDay) !end.toLocalDate().isBefore(start.toLocalDate()) else !end.isBefore(start)
@@ -59,8 +63,9 @@ data class EventDraft(
     )
 
     // Moving one occurrence moves the whole series by the same amount
+    // Without repeating it simply becomes the occurrence that is shown
     fun seriesStartMillis(): Long =
-        if (instanceBegin != null && seriesStart != null) seriesStart + (startMillis() - instanceBegin) else startMillis()
+        if (rule != null && instanceBegin != null && seriesStart != null) seriesStart + (startMillis() - instanceBegin) else startMillis()
 
     companion object {
         fun new(calendarId: Long, day: LocalDate): EventDraft {

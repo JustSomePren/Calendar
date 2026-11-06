@@ -12,8 +12,11 @@ private val dateTimeFormat = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss")
 
 private data class IcsProperty(val name: String, val params: Map<String, String>, val value: String)
 
-// Reads events from an .ics export (Samsung Calendar, Outlook, ...) as drafts without a calendar
-fun parseIcs(text: String, zone: ZoneId = ZoneId.systemDefault()): List<EventDraft> {
+// An occurrence moved in the export carries the start it had in its series
+data class IcsEvent(val draft: EventDraft, val uid: String = "", val recurrenceId: Long? = null)
+
+// Reads events from an .ics export (Samsung Calendar, Outlook, ...), not yet tied to a calendar
+fun parseIcs(text: String, zone: ZoneId = ZoneId.systemDefault()): List<IcsEvent> {
     val lines = text.replace("\r\n", "\n").replace(Regex("\n[ \t]"), "").lines()
 
     val events = mutableListOf<List<IcsProperty>>()
@@ -29,7 +32,7 @@ fun parseIcs(text: String, zone: ZoneId = ZoneId.systemDefault()): List<EventDra
         }
     }
 
-    return events.mapNotNull { toDraft(it, zone) }
+    return events.mapNotNull { toEvent(it, zone) }
 }
 
 private fun parseProperty(line: String): IcsProperty? {
@@ -50,10 +53,13 @@ private fun parseProperty(line: String): IcsProperty? {
 private fun unescape(text: String) =
     text.replace("\\n", "\n").replace("\\N", "\n").replace("\\,", ",").replace("\\;", ";").replace("\\\\", "\\")
 
-private fun parseTime(property: IcsProperty, zone: ZoneId): LocalDateTime? = runCatching {
-    val value = property.value.trim()
+private fun isDate(property: IcsProperty, value: String = property.value.trim()) =
+    property.params["VALUE"] == "DATE" || value.length == 8
+
+// Local time in the phone's zone; dates become midnight
+private fun parseTime(property: IcsProperty, zone: ZoneId, value: String = property.value.trim()): LocalDateTime? = runCatching {
     when {
-        property.params["VALUE"] == "DATE" || value.length == 8 -> LocalDate.parse(value, dateFormat).atStartOfDay()
+        isDate(property, value) -> LocalDate.parse(value, dateFormat).atStartOfDay()
         value.endsWith("Z") ->
             LocalDateTime.parse(value.dropLast(1), dateTimeFormat).atZone(ZoneOffset.UTC).withZoneSameInstant(zone).toLocalDateTime()
         else -> {
@@ -63,20 +69,38 @@ private fun parseTime(property: IcsProperty, zone: ZoneId): LocalDateTime? = run
     }
 }.getOrNull()
 
-private fun toDraft(properties: List<IcsProperty>, zone: ZoneId): EventDraft? {
+// Moment as the calendar provider stores it, all-day dates are midnight UTC
+private fun parseMillis(property: IcsProperty, zone: ZoneId, value: String = property.value.trim()): Long? {
+    val time = parseTime(property, zone, value) ?: return null
+    return time.atZone(if (isDate(property, value)) ZoneOffset.UTC else zone).toInstant().toEpochMilli()
+}
+
+// Skipped occurrences in the provider's EXDATE format
+private fun excludedDates(properties: List<IcsProperty>, zone: ZoneId): String? =
+    properties.filter { it.name == "EXDATE" }
+        .flatMap { property -> property.value.split(',').map { property to it.trim() } }
+        .mapNotNull { (property, value) ->
+            val millis = parseMillis(property, zone, value) ?: return@mapNotNull null
+            val utc = java.time.Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC)
+            if (isDate(property, value)) utc.format(dateFormat) else utc.format(dateTimeFormat) + "Z"
+        }
+        .takeIf { it.isNotEmpty() }
+        ?.joinToString(",")
+
+private fun toEvent(properties: List<IcsProperty>, zone: ZoneId): IcsEvent? {
     val byName = properties.associateBy { it.name }
-    // Changed occurrences and cancelled events are left out
-    if ("RECURRENCE-ID" in byName || byName["STATUS"]?.value.equals("CANCELLED", ignoreCase = true)) return null
+    if (byName["STATUS"]?.value.equals("CANCELLED", ignoreCase = true)) return null
 
     val startProperty = byName["DTSTART"] ?: return null
     val start = parseTime(startProperty, zone) ?: return null
-    val allDay = startProperty.params["VALUE"] == "DATE" || startProperty.value.trim().length == 8
+    val allDay = isDate(startProperty)
 
     val end = byName["DTEND"]?.let { parseTime(it, zone) }
         ?: byName["DURATION"]?.let { start.plus(parseDuration(it.value)) }
         ?: if (allDay) start.plusDays(1) else start
+    val rule = byName["RRULE"]?.value?.takeIf { it.isNotBlank() }
 
-    return EventDraft(
+    val draft = EventDraft(
         calendarId = -1,
         title = unescape(byName["SUMMARY"]?.value.orEmpty()),
         location = unescape(byName["LOCATION"]?.value.orEmpty()),
@@ -85,13 +109,28 @@ private fun toDraft(properties: List<IcsProperty>, zone: ZoneId): EventDraft? {
         start = start,
         // All-day ends are exclusive in .ics, drafts keep the last day
         end = if (allDay) maxOf(start, end.minus(Duration.ofDays(1))) else end,
-        rule = byName["RRULE"]?.value?.takeIf { it.isNotBlank() },
+        rule = rule,
+        excludedDates = rule?.let { excludedDates(properties, zone) },
     )
+    return IcsEvent(draft, byName["UID"]?.value.orEmpty(), byName["RECURRENCE-ID"]?.let { parseMillis(it, zone) })
 }
 
-// Saves drafts into a calendar, skipping ones that are already there; returns how many were added
-fun CalendarRepository.import(drafts: List<EventDraft>, calendarId: Long): Int =
-    drafts.map { it.copy(calendarId = calendarId) }
-        .filterNot { exists(calendarId, it.title, it.startMillis()) }
-        .onEach { saveEvent(it) }
-        .size
+// Saves events into a calendar, skipping ones that are already there; returns how many were added
+fun CalendarRepository.import(events: List<IcsEvent>, calendarId: Long): Int {
+    val series = HashMap<String, Long>()
+    var added = 0
+    // Series go first, so their changed occurrences can be attached to them
+    for (event in events.sortedBy { it.recurrenceId != null }) {
+        val draft = event.draft.copy(calendarId = calendarId)
+        val existing = findEvent(calendarId, draft.title, draft.startMillis())
+        val seriesId = series[event.uid]
+        val id = when {
+            existing != null -> existing
+            event.recurrenceId != null && seriesId != null ->
+                saveOccurrence(draft.copy(id = seriesId, instanceBegin = event.recurrenceId)).also { added++ }
+            else -> saveEvent(draft).also { added++ }
+        }
+        if (event.recurrenceId == null && draft.rule != null && event.uid.isNotEmpty()) series[event.uid] = id
+    }
+    return added
+}

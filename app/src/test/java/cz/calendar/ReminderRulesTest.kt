@@ -51,6 +51,13 @@ class ReminderRulesTest {
     }
 
     @Test
+    fun nightShiftIsNotMultiDay() {
+        val shift = timed(22).copy(end = millis(day.plusDays(1).atTime(6, 0)))
+        assertEquals(listOf(day.atTime(21, 30)), times(reminderTimes(shift, Priority.NORMAL, zone)))
+        assertEquals("Zítra v 22:00", whenText(shift, millis(day.minusDays(1).atTime(20, 0)), zone))
+    }
+
+    @Test
     fun allDayRemindsTheDayBefore() {
         assertEquals(listOf(day.minusDays(1).atTime(18, 0)), times(reminderTimes(allDay(1), Priority.NORMAL, zone)))
     }

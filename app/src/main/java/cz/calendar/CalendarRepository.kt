@@ -90,6 +90,7 @@ class CalendarRepository(private val resolver: ContentResolver) {
             Instances.END,
             Instances.ALL_DAY,
             Instances.DISPLAY_COLOR,
+            Instances.ORIGINAL_ID,
         )
 
         val result = HashMap<LocalDate, MutableList<CalendarEvent>>()
@@ -107,7 +108,7 @@ class CalendarRepository(private val resolver: ContentResolver) {
                 allDay = allDay,
                 multiDay = days.endInclusive > days.start,
                 color = c.getInt(6),
-                important = c.getLong(0) in important,
+                important = c.getLong(0) in important || (!c.isNull(7) && c.getLong(7) in important),
             )
 
             var day = maxOf(days.start, from)
@@ -135,6 +136,7 @@ class CalendarRepository(private val resolver: ContentResolver) {
             Instances.ALL_DAY,
             Instances.RRULE,
             Instances.OWNER_ACCOUNT,
+            Instances.ORIGINAL_ID,
         )
         val result = mutableListOf<UpcomingEvent>()
         instances(from, to, projection) { c ->
@@ -150,6 +152,7 @@ class CalendarRepository(private val resolver: ContentResolver) {
                 allDay = c.getInt(8) == 1,
                 recurring = !c.getString(9).isNullOrBlank(),
                 calendarOwner = c.getString(10).orEmpty(),
+                seriesId = if (c.isNull(11)) c.getLong(0) else c.getLong(11),
             )
         }
         return result
@@ -176,6 +179,7 @@ class CalendarRepository(private val resolver: ContentResolver) {
             Events.ALL_DAY,
             Events.RRULE,
             Events.ORGANIZER,
+            Events.ORIGINAL_ID,
         )
         val draft = query(ContentUris.withAppendedId(Events.CONTENT_URI, id), projection) { c ->
             val allDay = c.getInt(7) == 1
@@ -209,6 +213,7 @@ class CalendarRepository(private val resolver: ContentResolver) {
                 instanceBegin = occurrence,
                 seriesStart = occurrence?.let { seriesStart },
                 organizer = organizer,
+                originalId = if (c.isNull(10)) null else c.getLong(10),
             ) to organizer
         }.firstOrNull() ?: return null
 
@@ -257,13 +262,13 @@ class CalendarRepository(private val resolver: ContentResolver) {
         resolver.insert(ContentUris.withAppendedId(Events.CONTENT_EXCEPTION_URI, id), values)
     }
 
-    fun exists(calendarId: Long, title: String, begin: Long): Boolean =
+    fun findEvent(calendarId: Long, title: String, begin: Long): Long? =
         query(
             Events.CONTENT_URI,
             arrayOf(Events._ID),
             "${Events.CALENDAR_ID} = ? AND ${Events.TITLE} = ? AND ${Events.DTSTART} = ? AND ${Events.DELETED} = 0",
             arrayOf(calendarId.toString(), title.trim(), begin.toString()),
-        ) { it.getLong(0) }.isNotEmpty()
+        ) { it.getLong(0) }.firstOrNull()
 
     private fun saveAttendees(eventId: Long, emails: List<String>) {
         val current = attendees(eventId).map { it.email.lowercase() }
@@ -300,6 +305,7 @@ class CalendarRepository(private val resolver: ContentResolver) {
             put(Events.RRULE, draft.rule)
             put(Events.DURATION, draft.durationRule())
             putNull(Events.DTEND)
+            draft.excludedDates?.let { put(Events.EXDATE, it) }
         } else {
             put(Events.DTEND, draft.endMillis())
             putNull(Events.RRULE)

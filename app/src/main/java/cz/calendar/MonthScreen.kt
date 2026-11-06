@@ -64,6 +64,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
@@ -335,14 +336,19 @@ private fun DaySheet(
 
 @Composable
 private fun EventRow(event: CalendarEvent, onClick: () -> Unit) {
-    val timeFormat = DateTimeFormatter.ofPattern("HH:mm")
     val zone = ZoneId.systemDefault()
-    val time = if (event.allDay) {
-        "Celý den"
-    } else {
-        val begin = Instant.ofEpochMilli(event.begin).atZone(zone).format(timeFormat)
-        val end = Instant.ofEpochMilli(event.end).atZone(zone).format(timeFormat)
-        "$begin – $end"
+    val days = eventDays(event.begin, event.end, if (event.allDay) ZoneOffset.UTC else zone)
+    val dateFormat = DateTimeFormatter.ofPattern("d. M.")
+    // Events running over several days show the dates, not just the hours
+    val timeFormat = DateTimeFormatter.ofPattern(if (event.multiDay) "d. M. HH:mm" else "HH:mm")
+    val time = when {
+        event.allDay && event.multiDay -> "Celý den, ${days.start.format(dateFormat)} – ${days.endInclusive.format(dateFormat)}"
+        event.allDay -> "Celý den"
+        else -> {
+            val begin = Instant.ofEpochMilli(event.begin).atZone(zone).format(timeFormat)
+            val end = Instant.ofEpochMilli(event.end).atZone(zone).format(timeFormat)
+            "$begin – $end"
+        }
     }
 
     Row(

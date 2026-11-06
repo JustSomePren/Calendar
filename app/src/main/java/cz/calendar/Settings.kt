@@ -68,6 +68,13 @@ class Settings(context: Context) {
         edit.apply()
     }
 
+    // A changed occurrence follows its series unless it has its own choice
+    fun watchFor(eventId: Long, seriesId: Long): Watch =
+        watch(eventId).takeIf { it != Watch.AUTO || eventId == seriesId } ?: watch(seriesId)
+
+    fun priorityFor(eventId: Long, seriesId: Long): Priority =
+        priority(eventId).takeIf { it != Priority.NORMAL || eventId == seriesId } ?: priority(seriesId)
+
     fun eventsWithPriority(priority: Priority): Set<Long> =
         prefs.all.filter { (key, value) -> key.startsWith("priority_") && value == priority.name }
             .keys.map { it.removePrefix("priority_").toLong() }.toSet()

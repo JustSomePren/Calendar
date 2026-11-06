@@ -222,10 +222,10 @@ private fun ImportSection(calendars: List<CalendarInfo>, repository: CalendarRep
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    val drafts = uris.flatMap { uri ->
+                    val events = uris.flatMap { uri ->
                         context.contentResolver.openInputStream(uri)?.use { parseIcs(it.reader().readText()) }.orEmpty()
                     }
-                    drafts.size to repository.import(drafts, calendarId)
+                    events.size to repository.import(events, calendarId)
                 }
             }
             val message = result.fold(

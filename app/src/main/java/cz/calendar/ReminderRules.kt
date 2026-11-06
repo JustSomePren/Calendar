@@ -17,6 +17,8 @@ data class UpcomingEvent(
     val organizer: String = "",
     // Account of the calendar the event is in, events organized by it are mine
     val calendarOwner: String = "",
+    // For an occurrence changed on its own, the recurring event it came from
+    val seriesId: Long = eventId,
     val begin: Long,
     val end: Long,
     val allDay: Boolean = false,
@@ -39,10 +41,14 @@ private val morningEnds = LocalTime.of(9, 0)
  * Recurring events and low priority keep only the closest reminder.
  * High priority adds an earlier one and, for all-day events, a morning one.
  */
+// A night shift 22:00–06:00 is not multi-day, only events lasting whole days are
+val UpcomingEvent.multiDay: Boolean
+    get() = if (allDay) end - begin > 24 * 3600_000L else end - begin >= 24 * 3600_000L
+
 fun reminderTimes(event: UpcomingEvent, priority: Priority, zone: ZoneId): List<Long> {
     val days = eventDays(event.begin, event.end, if (event.allDay) ZoneOffset.UTC else zone)
     val startDay = days.start
-    val multiDay = days.endInclusive > startDay
+    val multiDay = event.multiDay
     val startTime = Instant.ofEpochMilli(event.begin).atZone(zone).toLocalTime()
 
     fun at(day: LocalDate, time: LocalTime) = day.atTime(time).atZone(zone).toInstant().toEpochMilli()
@@ -124,7 +130,7 @@ fun whenText(event: UpcomingEvent, now: Long, zone: ZoneId): String {
     val time = Instant.ofEpochMilli(event.begin).atZone(zone).format(timeFormat)
 
     return when {
-        days.endInclusive > days.start ->
+        event.multiDay ->
             "${dayLabel(days.start, today)} – ${dayLabel(days.endInclusive, today).replaceFirstChar { it.lowercase() }}"
         event.allDay -> "${dayLabel(days.start, today)}, celý den"
         minutesLeft in 0..59 -> "Za $minutesLeft min, v $time"
