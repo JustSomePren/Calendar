@@ -10,6 +10,11 @@
         android:name="android.permission.SCHEDULE_EXACT_ALARM"
         android:maxSdkVersion="32" />
 
+    <!-- The Galerie app pairs photos with events -->
+    <queries>
+        <package android:name="com.justsomepren.gallery" />
+    </queries>
+
     <application
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
@@ -27,13 +32,25 @@
 
         <activity
             android:name=".EventEditActivity"
-            android:exported="false"
-            android:windowSoftInputMode="adjustResize" />
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <!-- Opened from the Galerie app -->
+            <intent-filter>
+                <action android:name="cz.calendar.action.OPEN_EVENT" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
 
         <activity
             android:name=".SettingsActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
+
+        <!-- Checks that the caller is the Galerie app signed with its key -->
+        <provider
+            android:name=".LinkProvider"
+            android:authorities="cz.calendar.link"
+            android:exported="true" />
 
         <receiver
             android:name=".ReminderReceiver"

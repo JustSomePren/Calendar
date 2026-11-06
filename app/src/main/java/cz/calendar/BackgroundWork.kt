@@ -19,6 +19,8 @@ class RefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorke
     override suspend fun doWork(): Result {
         EventNotifier.run(applicationContext)
         MonthWidget().updateAll(applicationContext)
+        // A synced change can move a vacation, so the gallery reads them again
+        if (Settings(applicationContext).hasVacations) GalleryLink.notifyChanged(applicationContext)
         // A content trigger fires only once, so wait for the next change again
         if (WATCH in tags) BackgroundWork.watch(applicationContext, ExistingWorkPolicy.APPEND_OR_REPLACE)
         return Result.success()

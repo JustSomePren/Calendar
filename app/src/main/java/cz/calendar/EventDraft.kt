@@ -19,6 +19,7 @@ data class EventDraft(
     val rule: String? = null,
     val priority: Priority = Priority.NORMAL,
     val watch: Watch = Watch.AUTO,
+    val vacation: Vacation? = null,
     // Read only, empty for new events (they will be mine)
     val organizer: String = "",
     val attendees: List<String> = emptyList(),

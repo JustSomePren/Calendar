@@ -1,6 +1,7 @@
 package cz.calendar
 
 import android.content.Context
+import org.json.JSONObject
 
 enum class Category(val label: String, val hint: String) {
     PERSONAL("Osobní", "Upozorní na všechny události"),
@@ -14,6 +15,9 @@ enum class Watch(val label: String) {
     ALWAYS("Vždy (sledovat)"),
     NEVER("Nikdy"),
 }
+
+// Personal event whose photos the gallery collects into an album
+data class Vacation(val album: String, val account: String? = null, val autoSend: Boolean = false)
 
 enum class Priority(val label: String) {
     LOW("Nízká"),
@@ -71,6 +75,26 @@ class Settings(context: Context) {
     fun eventsWithPriority(priority: Priority): Set<Long> =
         prefs.all.filter { (key, value) -> key.startsWith("priority_") && value == priority.name }
             .keys.map { it.removePrefix("priority_").toLong() }.toSet()
+
+    fun vacation(eventId: Long): Vacation? =
+        prefs.getString("vacation_$eventId", null)?.let { text ->
+            val json = JSONObject(text)
+            Vacation(json.optString("album"), json.optString("account").ifBlank { null }, json.optBoolean("auto"))
+        }
+
+    fun setVacation(eventId: Long, vacation: Vacation?) {
+        val edit = prefs.edit()
+        if (vacation == null) {
+            edit.remove("vacation_$eventId")
+        } else {
+            val json = JSONObject().put("album", vacation.album).put("account", vacation.account.orEmpty()).put("auto", vacation.autoSend)
+            edit.putString("vacation_$eventId", json.toString())
+        }
+        edit.apply()
+    }
+
+    val hasVacations: Boolean
+        get() = prefs.all.keys.any { it.startsWith("vacation_") }
 
     var notifierStarted: Boolean
         get() = prefs.getBoolean("notifier_started", false)

@@ -51,6 +51,24 @@ Priorita a volba upozornění se ukládají jen v této aplikaci, do Googlu se n
 
 Aby upozornění nechodila dvakrát, vypni je v aplikaci Google Kalendář (v nastavení je na to tlačítko).
 
+## Propojení s Galerií
+
+Když je v telefonu nainstalovaná i aplikace **Galerie**, propojí se samy, nic se nenastavuje:
+
+- **Fotky u události**: v editoru proběhlé události jsou náhledy fotek, které vznikly během ní
+  (u událostí s časem 15 min předem až 30 min po konci, u celodenních celé dny).
+  Klepnutím se otevřou v Galerii. Snímky obrazovky se nepočítají.
+- **Dovolená / výlet** (jen u kalendářů s kategorií Osobní): přepínač v editoru.
+  Galerie pak z fotek těch dní udělá album (název = název události, nebo vlastní)
+  a událost ukáže ve svém kalendáři jako barevný pruh.
+- **Posílat do Google Fotek**: u dovolené vybereš Google účet (z účtů přidaných v Galerii).
+  Galerie pak fotky z těch dní sama pošle do toho účtu a alba, jen na Wi-Fi.
+- **Místo podle fotek**: pokud mají fotky GPS polohu, editor ukáže, kde vznikly
+  (tlačítko „Na mapě“, a když událost nemá místo, i „Použít“). Bez polohy ve fotkách se řádek neukáže.
+
+Dovolená se ukládá jen v této aplikaci (jako priorita), do Googlu se nepřenáší.
+Aplikace si navzájem povolí přístup jen tehdy, když je ta druhá podepsaná správným klíčem.
+
 ## Samsung Kalendář
 
 Samsung kalendář se na telefonech jiných značek synchronizovat nedá. Na telefonu Samsung události vyexportuj nebo sdílej jako soubor `.ics`, pošli si ho do telefonu a v nastavení → „Import ze Samsung Kalendáře“ ho vyber. Jde vybrat i víc souborů naráz, události, které už v kalendáři jsou, se přeskočí.

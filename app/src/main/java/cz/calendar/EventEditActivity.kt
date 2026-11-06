@@ -90,7 +90,13 @@ private fun defaultCalendar(calendars: List<CalendarInfo>, lastUsed: Long): Cale
     return writable.find { it.id == lastUsed } ?: writable.find { it.primary } ?: writable.firstOrNull()
 }
 
-private data class Loaded(val calendars: List<CalendarInfo>, val draft: EventDraft?, val attendees: List<Attendee>)
+// galleryAccounts is null when the Galerie app is not installed
+private data class Loaded(
+    val calendars: List<CalendarInfo>,
+    val draft: EventDraft?,
+    val attendees: List<Attendee>,
+    val galleryAccounts: List<String>?,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -108,6 +114,7 @@ private fun EventEditScreen(
     var loading by remember { mutableStateOf(true) }
     var calendars by remember { mutableStateOf(emptyList<CalendarInfo>()) }
     var statuses by remember { mutableStateOf(emptyList<Attendee>()) }
+    var galleryAccounts by remember { mutableStateOf<List<String>?>(null) }
     var original by remember { mutableStateOf<EventDraft?>(null) }
     var draft by remember { mutableStateOf<EventDraft?>(null) }
     var showDelete by remember { mutableStateOf(false) }
@@ -117,11 +124,16 @@ private fun EventEditScreen(
         val loaded = withContext(Dispatchers.IO) {
             val all = repository.calendars()
             val event = if (eventId != null) {
-                repository.event(eventId, instanceBegin)?.copy(priority = settings.priority(eventId), watch = settings.watch(eventId))
+                repository.event(eventId, instanceBegin)?.copy(
+                    priority = settings.priority(eventId),
+                    watch = settings.watch(eventId),
+                    vacation = settings.vacation(eventId),
+                )
             } else {
                 defaultCalendar(all, settings.lastCalendar)?.let { EventDraft.new(it.id, day) }
             }
-            Loaded(all, event, eventId?.let { repository.attendees(it) }.orEmpty())
+            val accounts = if (GalleryLink.installed(context)) GalleryLink.accounts(context) else null
+            Loaded(all, event, eventId?.let { repository.attendees(it) }.orEmpty(), accounts)
         }
         if (eventId != null && loaded.draft == null) {
             onClose()
@@ -129,6 +141,7 @@ private fun EventEditScreen(
         }
         calendars = loaded.calendars
         statuses = loaded.attendees
+        galleryAccounts = loaded.galleryAccounts
         original = loaded.draft
         draft = loaded.draft
         loading = false
@@ -143,7 +156,9 @@ private fun EventEditScreen(
                 if (savedId != null && saved != null) {
                     settings.setPriority(savedId, saved.priority)
                     settings.setWatch(savedId, saved.watch)
+                    settings.setVacation(savedId, saved.vacation)
                 }
+                if (settings.hasVacations || original?.vacation != null) GalleryLink.notifyChanged(context)
                 BackgroundWork.refreshNow(context)
                 onClose()
             } else {
@@ -214,6 +229,8 @@ private fun EventEditScreen(
                     canChangeCalendar = current.id == null,
                     recurring = recurring,
                     autoHint = autoHint,
+                    galleryAccounts = galleryAccounts,
+                    personal = settings.category(current.calendarId) == Category.PERSONAL,
                     onChange = { draft = it },
                 )
             }
@@ -274,6 +291,8 @@ private fun EventForm(
     canChangeCalendar: Boolean,
     recurring: Boolean,
     autoHint: String,
+    galleryAccounts: List<String>?,
+    personal: Boolean,
     onChange: (EventDraft) -> Unit,
 ) {
     Column(
@@ -323,6 +342,10 @@ private fun EventForm(
         ChoiceRow("Priorita", priorityOptions, draft.priority, enabled = draft.watch != Watch.NEVER) {
             onChange(draft.copy(priority = it))
         }
+        // Like priority, a vacation lives only in this app, so read-only calendars can have one too
+        if (galleryAccounts != null && personal) {
+            VacationSection(draft.vacation, draft.title, galleryAccounts) { onChange(draft.copy(vacation = it)) }
+        }
 
         OutlinedTextField(
             value = draft.location,
@@ -332,6 +355,9 @@ private fun EventForm(
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
+        if (galleryAccounts != null && draft.id != null) {
+            EventPhotos(draft, onUseLocation = { place: String -> onChange(draft.copy(location = place)) }.takeIf { editable && draft.location.isBlank() })
+        }
         OutlinedTextField(
             value = draft.description,
             onValueChange = { onChange(draft.copy(description = it)) },
