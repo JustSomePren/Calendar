@@ -182,6 +182,21 @@ class RepositoryTest {
     }
 
     @Test
+    fun importedSeriesKeepsTimeZoneOfFile() {
+        val text = listOf(
+            "BEGIN:VEVENT", "UID:abc", "SUMMARY:US sync", "DTSTART;TZID=America/New_York:20260910T100000",
+            "DTEND;TZID=America/New_York:20260910T110000", "RRULE:FREQ=WEEKLY", "END:VEVENT",
+        ).joinToString("\r\n")
+
+        repository.import(parseIcs(text), 1)
+
+        val row = FakeCalendarProvider.events.single()
+        assertEquals("America/New_York", row[Events.EVENT_TIMEZONE])
+        val start = java.time.LocalDateTime.of(2026, 9, 10, 10, 0).atZone(ZoneId.of("America/New_York")).toInstant().toEpochMilli()
+        assertEquals(start, row[Events.DTSTART])
+    }
+
+    @Test
     fun turningSeriesIntoSingleEventKeepsShownOccurrence() {
         val seriesId = repository.saveEvent(EventDraft.new(1, day).copy(rule = "FREQ=WEEKLY"))
         val occurrence = (FakeCalendarProvider.event(seriesId)[Events.DTSTART] as Long) + 14 * 24 * 3600_000L

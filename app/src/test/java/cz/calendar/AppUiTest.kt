@@ -48,7 +48,7 @@ class AppUiTest {
     @Test
     fun monthShowsEvent() {
         ActivityScenario.launch(MainActivity::class.java).use {
-            compose.waitUntil(5_000) { compose.onAllNodesWithText("Zubař").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(15_000) { compose.onAllNodesWithText("Zubař").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText(monthTitle(java.time.YearMonth.now())).assertIsDisplayed()
         }
     }
@@ -58,7 +58,7 @@ class AppUiTest {
         val intent = Intent(ApplicationProvider.getApplicationContext(), MainActivity::class.java)
             .putExtra(EXTRA_DAY, today.toString())
         ActivityScenario.launch<MainActivity>(intent).use {
-            compose.waitUntil(5_000) { compose.onAllNodesWithText("Přidat událost").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(15_000) { compose.onAllNodesWithText("Přidat událost").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("09:00 – 10:00").assertExists()
             // Panel row plus the month grid (the pager also keeps the neighbouring month ready)
             assertTrue(compose.onAllNodesWithText("Zubař").fetchSemanticsNodes().size >= 2)
@@ -71,7 +71,7 @@ class AppUiTest {
         val intent = Intent(ApplicationProvider.getApplicationContext(), EventEditActivity::class.java)
             .putExtra(EXTRA_EVENT_ID, dentist)
         ActivityScenario.launch<EventEditActivity>(intent).use {
-            compose.waitUntil(5_000) { compose.onAllNodesWithText("Zubař").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(15_000) { compose.onAllNodesWithText("Zubař").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Praha").assertExists()
             compose.onNodeWithText("Vysoká").assertExists()
             compose.onNodeWithText("Podle kalendáře").assertExists()

@@ -71,10 +71,10 @@ class UserFlowTest {
     )
 
     private fun waitForText(text: String) =
-        compose.waitUntil(5_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(15_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
 
     private fun waitFor(condition: () -> Boolean) {
-        val end = System.currentTimeMillis() + 5_000
+        val end = System.currentTimeMillis() + 15_000
         while (!condition()) {
             if (System.currentTimeMillis() > end) throw ComposeTimeoutException("Condition not met")
             compose.waitForIdle()

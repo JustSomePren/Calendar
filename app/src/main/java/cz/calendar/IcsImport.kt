@@ -78,6 +78,11 @@ private fun parseTime(property: IcsProperty, zone: ZoneId, value: String = prope
     }
 }.getOrNull()
 
+private fun fileZone(property: IcsProperty): String? = when {
+    property.value.trim().endsWith("Z") -> "UTC"
+    else -> property.params["TZID"]?.takeIf { runCatching { ZoneId.of(it) }.isSuccess }
+}
+
 // Moment as the calendar provider stores it, all-day dates are midnight UTC
 private fun parseMillis(property: IcsProperty, zone: ZoneId, value: String = property.value.trim()): Long? {
     val time = parseTime(property, zone, value) ?: return null
@@ -120,6 +125,8 @@ private fun toEvent(properties: List<IcsProperty>, cancelledOccurrences: List<Ic
         end = if (allDay) maxOf(start, end.minus(Duration.ofDays(1))) else end,
         rule = rule,
         excludedDates = rule?.let { excludedDates(properties.filter { it.name == "EXDATE" } + cancelledOccurrences, zone) },
+        // The series repeats in the file's own zone, e.g. 10:00 New York all year round
+        eventTimeZone = if (allDay) null else fileZone(startProperty),
     )
     return IcsEvent(draft, byName["UID"]?.value.orEmpty(), byName["RECURRENCE-ID"]?.let { parseMillis(it, zone) })
 }
