@@ -5,6 +5,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.time.temporal.ChronoUnit
 
 data class EventDraft(
     val id: Long? = null,
@@ -26,7 +27,9 @@ data class EventDraft(
     val attendees: List<String> = emptyList(),
     // Set when a recurring event was opened from one of its occurrences
     val instanceBegin: Long? = null,
-    val seriesStart: Long? = null,
+    // Dates of the series start and of the opened occurrence, as they were when loaded
+    val seriesStartDate: LocalDate? = null,
+    val instanceDate: LocalDate? = null,
     // Set for an occurrence that was changed on its own
     val originalId: Long? = null,
 ) {
@@ -64,8 +67,13 @@ data class EventDraft(
 
     // Moving one occurrence moves the whole series by the same amount
     // Without repeating it simply becomes the occurrence that is shown
-    fun seriesStartMillis(): Long =
-        if (rule != null && instanceBegin != null && seriesStart != null) seriesStart + (startMillis() - instanceBegin) else startMillis()
+    // Shifted by whole days and given the new time of day, so it stays right over a daylight-saving
+    // change or when switching all-day on or off
+    fun seriesStartMillis(): Long {
+        if (rule == null || seriesStartDate == null || instanceDate == null) return startMillis()
+        val day = seriesStartDate.plusDays(ChronoUnit.DAYS.between(instanceDate, start.toLocalDate()))
+        return toMillis(if (allDay) day.atStartOfDay() else day.atTime(start.toLocalTime()))
+    }
 
     companion object {
         fun new(calendarId: Long, day: LocalDate): EventDraft {

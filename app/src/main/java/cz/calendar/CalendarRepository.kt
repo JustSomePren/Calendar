@@ -147,7 +147,8 @@ class CalendarRepository(private val resolver: ContentResolver) {
                 begin = c.getLong(6),
                 end = c.getLong(7),
                 allDay = c.getInt(8) == 1,
-                recurring = !c.getString(9).isNullOrBlank(),
+                // A changed occurrence has no rule of its own but still belongs to a series
+                recurring = !c.getString(9).isNullOrBlank() || !c.isNull(10),
                 account = accounts[c.getLong(1)].orEmpty(),
                 seriesId = if (c.isNull(10)) c.getLong(0) else c.getLong(10),
             )
@@ -208,7 +209,8 @@ class CalendarRepository(private val resolver: ContentResolver) {
                 end = finish,
                 rule = rule,
                 instanceBegin = occurrence,
-                seriesStart = occurrence?.let { seriesStart },
+                seriesStartDate = occurrence?.let { Instant.ofEpochMilli(seriesStart).atZone(zone).toLocalDate() },
+                instanceDate = occurrence?.let { start.toLocalDate() },
                 organizer = organizer,
                 originalId = if (c.isNull(10)) null else c.getLong(10),
             ) to organizer

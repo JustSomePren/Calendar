@@ -84,7 +84,7 @@ object EventNotifier {
             .setCategory(NotificationCompat.CATEGORY_EVENT)
             .setContentIntent(pending)
             .setAutoCancel(true)
-            .addAction(0, "Neupozorňovat", muteIntent(context, event.eventId, id))
+            .addAction(0, "Neupozorňovat", muteIntent(context, event.seriesId, id))
             .setWhen(event.begin)
             .setShowWhen(false)
             .build()

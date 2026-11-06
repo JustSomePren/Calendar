@@ -53,10 +53,38 @@ class EventDraftTest {
     fun movingOneOccurrenceShiftsTheSeries() {
         val draft = EventDraft.new(1, day).copy(rule = "FREQ=WEEKLY")
         val seriesStart = draft.startMillis() - 7 * 24 * 3600_000L
-        val opened = draft.copy(instanceBegin = draft.startMillis(), seriesStart = seriesStart)
+        val opened = draft.copy(instanceBegin = draft.startMillis(), seriesStartDate = day.minusDays(7), instanceDate = day)
 
         assertEquals(seriesStart, opened.seriesStartMillis())
         val moved = opened.copy(start = opened.start.plusHours(2), end = opened.end.plusHours(2))
         assertEquals(seriesStart + 2 * 3600_000L, moved.seriesStartMillis())
+    }
+
+    @Test
+    fun seriesKeepsWallClockOverDaylightSavingAndAllDaySwitch() {
+        val previous = java.util.TimeZone.getDefault()
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Europe/Prague"))
+        try {
+            checkSeriesOverDaylightSaving()
+        } finally {
+            java.util.TimeZone.setDefault(previous)
+        }
+    }
+
+    private fun checkSeriesOverDaylightSaving() {
+        val zone = java.time.ZoneId.systemDefault()
+        val summer = LocalDate.of(2026, 7, 6)
+        val winter = LocalDate.of(2026, 11, 2)
+        val opened = EventDraft.new(1, winter).copy(
+            rule = "FREQ=WEEKLY", allDay = true, start = winter.atStartOfDay(), end = winter.atStartOfDay(),
+            instanceBegin = winter.atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli(),
+            seriesStartDate = summer, instanceDate = winter,
+        )
+
+        val timed = opened.copy(allDay = false, start = winter.atTime(9, 0), end = winter.atTime(10, 0))
+        assertEquals(summer.atTime(9, 0).atZone(zone).toInstant().toEpochMilli(), timed.seriesStartMillis())
+
+        val backToAllDay = timed.copy(allDay = true)
+        assertEquals(summer.atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli(), backToAllDay.seriesStartMillis())
     }
 }

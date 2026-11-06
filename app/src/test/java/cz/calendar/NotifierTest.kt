@@ -139,6 +139,40 @@ class NotifierTest {
     }
 
     @Test
+    fun muteOnChangedOccurrenceMutesWholeSeries() {
+        val series = FakeCalendarProvider.addEvent(
+            mapOf(
+                Events.CALENDAR_ID to 1L, Events.TITLE to "Úklid", Events.ALL_DAY to 0, Events.RRULE to "FREQ=WEEKLY",
+                Events.DTSTART to now - 7 * 24 * 3600_000L, Events.DURATION to "P3600S",
+            )
+        )
+        val moved = soon(1, "Úklid jindy")
+        FakeCalendarProvider.event(moved)[Events.ORIGINAL_ID] = series
+
+        EventNotifier.run(app, now)
+        val notification = Shadows.shadowOf(app.getSystemService(NotificationManager::class.java)).allNotifications.single()
+        val mute = Shadows.shadowOf(notification.actions.single().actionIntent).savedIntent
+        ReminderReceiver().onReceive(app, mute)
+
+        assertEquals(Watch.NEVER, settings.watch(series))
+    }
+
+    @Test
+    fun changedOccurrenceGetsOnlyClosestReminder() {
+        val series = FakeCalendarProvider.addEvent(
+            mapOf(
+                Events.CALENDAR_ID to 1L, Events.TITLE to "Standup", Events.ALL_DAY to 0, Events.RRULE to "FREQ=DAILY",
+                Events.DTSTART to now - 7 * 24 * 3600_000L, Events.DURATION to "P900S",
+            )
+        )
+        val moved = soon(1, "Standup jinde")
+        FakeCalendarProvider.event(moved)[Events.ORIGINAL_ID] = series
+
+        val upcoming = CalendarRepository(app.contentResolver).upcoming(java.time.LocalDate.now(), java.time.LocalDate.now().plusDays(1))
+        assertEquals(true, upcoming.single { it.eventId == moved }.recurring)
+    }
+
+    @Test
     fun muteButtonStopsFurtherReminders() {
         val weekly = soon(1, "Týdenní úklid")
         val mute = Intent(app, ReminderReceiver::class.java)

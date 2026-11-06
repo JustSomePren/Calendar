@@ -143,7 +143,7 @@ private fun EventEditScreen(
         scope.launch {
             val result = withContext(Dispatchers.IO) { runCatching(action) }
             if (result.isSuccess) {
-                val savedId = saved?.id ?: result.getOrNull()
+                val savedId = saved?.let { it.originalId ?: it.id } ?: result.getOrNull()
                 if (savedId != null && saved != null) {
                     settings.setPriority(savedId, saved.priority)
                     settings.setWatch(savedId, saved.watch)
