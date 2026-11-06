@@ -89,6 +89,8 @@ Testy běží na počítači bez telefonu (Robolectric simuluje Android i kalend
 ./gradlew testDebugUnitTest koverHtmlReportDebug
 ```
 
+Test `ScreenshotTour` uloží snímky všech obrazovek s ukázkovými daty do `app/build/shots/`.
+
 Výsledky a pokrytí kódu jsou v `app/build/reports/`, na GitHubu v Actions → Artifacts → `testy-a-pokryti`.
 
 ## Vlastní sestavení
