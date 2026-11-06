@@ -52,7 +52,7 @@ class ScreenshotTour {
     fun setUp() {
         app = setUpFakeCalendar()
         FakeCalendarProvider.addCalendar(1, "Osobní")
-        FakeCalendarProvider.addCalendar(2, "Práce", color = 0xFF33B679.toInt(), owner = "ja@firma.cz")
+        FakeCalendarProvider.addCalendar(2, "Práce", color = 0xFF33B679.toInt(), account = "ja@firma.cz")
         FakeCalendarProvider.addCalendar(3, "Státní svátky", writable = false, color = 0xFF0B8043.toInt())
 
         val first = today.withDayOfMonth(1)

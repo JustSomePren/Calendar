@@ -24,7 +24,7 @@ class NotifierTest {
     fun setUp() {
         app = setUpFakeCalendar()
         FakeCalendarProvider.addCalendar(1, "Osobní")
-        FakeCalendarProvider.addCalendar(2, "Práce", owner = "ja@firma.cz")
+        FakeCalendarProvider.addCalendar(2, "Práce", account = "ja@firma.cz")
         FakeCalendarProvider.addCalendar(3, "Svátky")
         settings = Settings(app)
         settings.setCategory(2, Category.WORK)
@@ -98,6 +98,44 @@ class NotifierTest {
         EventNotifier.run(app, now)
 
         assertEquals(emptyList<String>(), shownTitles())
+    }
+
+    @Test
+    fun longVacationRemindsOnlyOnce() {
+        val zone = java.time.ZoneId.systemDefault()
+        val start = java.time.LocalDate.now().plusDays(3)
+        FakeCalendarProvider.addEvent(
+            mapOf(
+                Events.CALENDAR_ID to 1L,
+                Events.TITLE to "Dovolená",
+                Events.ALL_DAY to 1,
+                Events.DTSTART to start.atStartOfDay().toInstant(java.time.ZoneOffset.UTC).toEpochMilli(),
+                Events.DTEND to start.plusDays(9).atStartOfDay().toInstant(java.time.ZoneOffset.UTC).toEpochMilli(),
+            )
+        )
+        fun at(day: java.time.LocalDate, hour: Int, minute: Int) = day.atTime(hour, minute).atZone(zone).toInstant().toEpochMilli()
+
+        EventNotifier.run(app, at(start.minusDays(3), 18, 1))
+        EventNotifier.run(app, at(start.minusDays(1), 18, 1))
+        // Over a week later, while the vacation still runs
+        EventNotifier.run(app, at(start.plusDays(6), 10, 0))
+        EventNotifier.run(app, at(start.plusDays(6), 10, 1))
+
+        val notifications = Shadows.shadowOf(app.getSystemService(NotificationManager::class.java))
+        assertEquals(1, notifications.allNotifications.size)
+        assertEquals(2, settings.firedReminders.size)
+    }
+
+    @Test
+    fun colleaguesSharedCalendarIsNotMine() {
+        FakeCalendarProvider.addCalendar(4, "Petr", account = "ja@firma.cz", owner = "petr@firma.cz")
+        settings.setCategory(4, Category.WORK)
+        soon(4, "Petrův oběd s klientem", organizer = "petr@firma.cz")
+        soon(4, "Moje schůzka v Petrově kalendáři", organizer = "ja@firma.cz")
+
+        EventNotifier.run(app, now)
+
+        assertEquals(listOf("Moje schůzka v Petrově kalendáři"), shownTitles())
     }
 
     @Test

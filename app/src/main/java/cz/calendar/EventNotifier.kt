@@ -55,9 +55,11 @@ object EventNotifier {
         settings.notifierStarted = true
 
         // Forget reminders older than a week so the list stays small
+        // Forget old reminders so the list stays small, but not while their event still runs
         val weekAgo = now - 7 * 24 * 3600_000L
+        val stillPlanned = planned.map { it.key }.toSet()
         settings.firedReminders = (fired + due.map { it.key })
-            .filter { it.substringAfterLast(':').toLongOrNull()?.let { at -> at > weekAgo } == true }
+            .filter { it in stillPlanned || it.substringAfterLast(':').toLongOrNull()?.let { at -> at > weekAgo } == true }
             .toSet()
 
         scheduleNext(context, planned.filter { it.at > now }.minOfOrNull { it.at })

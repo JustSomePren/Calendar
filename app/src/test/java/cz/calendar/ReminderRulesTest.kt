@@ -58,6 +58,21 @@ class ReminderRulesTest {
     }
 
     @Test
+    fun highPriorityTripRemindsBeforeDeparture() {
+        val trip = timed(6).copy(end = millis(day.plusDays(2).atTime(20, 0)))
+
+        assertEquals(
+            listOf(
+                day.minusDays(3).atTime(18, 0),
+                day.minusDays(1).atTime(18, 0),
+                day.minusDays(1).atTime(20, 0),
+                day.atTime(4, 0),
+            ),
+            times(reminderTimes(trip, Priority.HIGH, zone)),
+        )
+    }
+
+    @Test
     fun allDayRemindsTheDayBefore() {
         assertEquals(listOf(day.minusDays(1).atTime(18, 0)), times(reminderTimes(allDay(1), Priority.NORMAL, zone)))
     }
@@ -108,9 +123,9 @@ class ReminderRulesTest {
 
     @Test
     fun eventIsMineWhenICreatedIt() {
-        assertTrue(timed(15).copy(organizer = "Ja@Firma.cz", calendarOwner = "ja@firma.cz").isMine)
-        assertTrue(timed(15).copy(organizer = "", calendarOwner = "ja@firma.cz").isMine)
-        assertFalse(timed(15).copy(organizer = "sef@firma.cz", calendarOwner = "ja@firma.cz").isMine)
+        assertTrue(timed(15).copy(organizer = "Ja@Firma.cz", account = "ja@firma.cz").isMine)
+        assertTrue(timed(15).copy(organizer = "", account = "ja@firma.cz").isMine)
+        assertFalse(timed(15).copy(organizer = "sef@firma.cz", account = "ja@firma.cz").isMine)
     }
 
     @Test

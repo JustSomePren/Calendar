@@ -53,7 +53,7 @@ class UserFlowTest {
     fun setUp() {
         app = setUpFakeCalendar()
         FakeCalendarProvider.addCalendar(1, "Rodina")
-        FakeCalendarProvider.addCalendar(2, "Práce", owner = "ja@firma.cz")
+        FakeCalendarProvider.addCalendar(2, "Práce", account = "ja@firma.cz")
         settings = Settings(app)
     }
 

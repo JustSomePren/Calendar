@@ -15,8 +15,9 @@ data class UpcomingEvent(
     val location: String = "",
     val description: String = "",
     val organizer: String = "",
-    // Account of the calendar the event is in, events organized by it are mine
-    val calendarOwner: String = "",
+    // Phone account the calendar is synced with; events it organizes are mine.
+    // Not the calendar owner, a colleague's shared calendar is owned by the colleague.
+    val account: String = "",
     // For an occurrence changed on its own, the recurring event it came from
     val seriesId: Long = eventId,
     val begin: Long,
@@ -64,7 +65,7 @@ fun reminderTimes(event: UpcomingEvent, priority: Priority, zone: ZoneId): List<
 
     if (event.recurring || priority == Priority.LOW) times = times.takeLast(1)
     if (priority == Priority.HIGH) {
-        times = times + if (event.allDay || multiDay) {
+        times = times + if (event.allDay) {
             listOf(at(startDay, allDayMorning))
         } else {
             listOf(minutesBefore(120), at(startDay.minusDays(1), eveningBefore))
@@ -72,12 +73,12 @@ fun reminderTimes(event: UpcomingEvent, priority: Priority, zone: ZoneId): List<
     }
 
     // All-day events may still remind on their own morning
-    val deadline = if (event.allDay || multiDay) event.end else event.begin
+    val deadline = if (event.allDay) event.end else event.begin
     return times.filter { it < deadline }.distinct().sorted()
 }
 
 val UpcomingEvent.isMine: Boolean
-    get() = organizer.isBlank() || organizer.equals(calendarOwner, ignoreCase = true)
+    get() = organizer.isBlank() || organizer.equals(account, ignoreCase = true)
 
 fun shouldNotify(category: Category, watch: Watch, mine: Boolean, matchesFilter: () -> Boolean): Boolean = when (watch) {
     Watch.ALWAYS -> true

@@ -140,6 +140,21 @@ class RepositoryTest {
     }
 
     @Test
+    fun importKeepsChangeOfFirstOccurrence() {
+        val text = listOf(
+            "BEGIN:VEVENT", "UID:joga", "SUMMARY:Jóga", "DTSTART:20261102T170000Z", "DTEND:20261102T180000Z",
+            "RRULE:FREQ=WEEKLY;COUNT=4", "END:VEVENT",
+            "BEGIN:VEVENT", "UID:joga", "RECURRENCE-ID:20261102T170000Z", "SUMMARY:Jóga", "LOCATION:Jiný sál",
+            "DTSTART:20261102T170000Z", "DTEND:20261102T180000Z", "END:VEVENT",
+        ).joinToString("\r\n")
+
+        assertEquals(2, repository.import(parseIcs(text), 1))
+        assertEquals("Jiný sál", FakeCalendarProvider.events.single { it[Events.ORIGINAL_ID] != null }[Events.EVENT_LOCATION])
+        // Importing the same file again adds nothing
+        assertEquals(0, repository.import(parseIcs(text), 1))
+    }
+
+    @Test
     fun turningSeriesIntoSingleEventKeepsShownOccurrence() {
         val seriesId = repository.saveEvent(EventDraft.new(1, day).copy(rule = "FREQ=WEEKLY"))
         val occurrence = (FakeCalendarProvider.event(seriesId)[Events.DTSTART] as Long) + 14 * 24 * 3600_000L

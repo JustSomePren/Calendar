@@ -122,13 +122,13 @@ fun CalendarRepository.import(events: List<IcsEvent>, calendarId: Long): Int {
     // Series go first, so their changed occurrences can be attached to them
     for (event in events.sortedBy { it.recurrenceId != null }) {
         val draft = event.draft.copy(calendarId = calendarId)
-        val existing = findEvent(calendarId, draft.title, draft.startMillis())
         val seriesId = series[event.uid]
-        val id = when {
-            existing != null -> existing
-            event.recurrenceId != null && seriesId != null ->
-                saveOccurrence(draft.copy(id = seriesId, instanceBegin = event.recurrenceId)).also { added++ }
-            else -> saveEvent(draft).also { added++ }
+        val id = if (event.recurrenceId != null && seriesId != null) {
+            // A changed occurrence may start just like its series, so look among the series' exceptions
+            findException(seriesId, event.recurrenceId)
+                ?: saveOccurrence(draft.copy(id = seriesId, instanceBegin = event.recurrenceId)).also { added++ }
+        } else {
+            findEvent(calendarId, draft.title, draft.startMillis()) ?: saveEvent(draft).also { added++ }
         }
         if (event.recurrenceId == null && draft.rule != null && event.uid.isNotEmpty()) series[event.uid] = id
     }

@@ -22,7 +22,6 @@ data class CalendarInfo(
     val color: Int,
     val writable: Boolean,
     val primary: Boolean,
-    val owner: String = "",
 )
 
 data class CalendarEvent(
@@ -60,7 +59,6 @@ class CalendarRepository(private val resolver: ContentResolver) {
             Calendars.CALENDAR_COLOR,
             Calendars.CALENDAR_ACCESS_LEVEL,
             Calendars.IS_PRIMARY,
-            Calendars.OWNER_ACCOUNT,
         )
         return query(Calendars.CONTENT_URI, projection, "${Calendars.SYNC_EVENTS} = 1", sortOrder = Calendars.ACCOUNT_NAME) { c ->
             CalendarInfo(
@@ -70,7 +68,6 @@ class CalendarRepository(private val resolver: ContentResolver) {
                 color = c.getInt(3),
                 writable = c.getInt(4) >= Calendars.CAL_ACCESS_CONTRIBUTOR,
                 primary = c.getInt(5) == 1,
-                owner = c.getString(6).orEmpty(),
             )
         }
     }
@@ -135,9 +132,9 @@ class CalendarRepository(private val resolver: ContentResolver) {
             Instances.END,
             Instances.ALL_DAY,
             Instances.RRULE,
-            Instances.OWNER_ACCOUNT,
             Instances.ORIGINAL_ID,
         )
+        val accounts = calendars().associate { it.id to it.account }
         val result = mutableListOf<UpcomingEvent>()
         instances(from, to, projection) { c ->
             result += UpcomingEvent(
@@ -151,8 +148,8 @@ class CalendarRepository(private val resolver: ContentResolver) {
                 end = c.getLong(7),
                 allDay = c.getInt(8) == 1,
                 recurring = !c.getString(9).isNullOrBlank(),
-                calendarOwner = c.getString(10).orEmpty(),
-                seriesId = if (c.isNull(11)) c.getLong(0) else c.getLong(11),
+                account = accounts[c.getLong(1)].orEmpty(),
+                seriesId = if (c.isNull(10)) c.getLong(0) else c.getLong(10),
             )
         }
         return result
@@ -261,6 +258,14 @@ class CalendarRepository(private val resolver: ContentResolver) {
         )
         resolver.insert(ContentUris.withAppendedId(Events.CONTENT_EXCEPTION_URI, id), values)
     }
+
+    fun findException(seriesId: Long, instanceBegin: Long): Long? =
+        query(
+            Events.CONTENT_URI,
+            arrayOf(Events._ID),
+            "${Events.ORIGINAL_ID} = ? AND ${Events.ORIGINAL_INSTANCE_TIME} = ? AND ${Events.DELETED} = 0",
+            arrayOf(seriesId.toString(), instanceBegin.toString()),
+        ) { it.getLong(0) }.firstOrNull()
 
     fun findEvent(calendarId: Long, title: String, begin: Long): Long? =
         query(

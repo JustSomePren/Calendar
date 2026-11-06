@@ -164,7 +164,7 @@ private fun EventEditScreen(
     val onlyLocalChanges = current != null && current.id != null &&
         current.copy(priority = Priority.NORMAL, watch = Watch.AUTO) == original?.copy(priority = Priority.NORMAL, watch = Watch.AUTO)
     val autoHint = current?.let { event ->
-        val upcoming = event.toUpcoming(calendar?.owner.orEmpty())
+        val upcoming = event.toUpcoming(calendar?.account.orEmpty())
         val people = event.attendees.map { email -> statuses.find { it.email.equals(email, ignoreCase = true) } ?: Attendee(email, 0) }
         val matches = matchesWorkFilter(upcoming, people, settings.workEmails, settings.workKeywords)
         autoReminderHint(settings.category(event.calendarId), upcoming.isMine, matches)

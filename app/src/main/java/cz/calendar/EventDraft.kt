@@ -48,14 +48,14 @@ data class EventDraft(
     private fun toMillis(time: LocalDateTime): Long =
         time.atZone(if (allDay) ZoneOffset.UTC else ZoneId.systemDefault()).toInstant().toEpochMilli()
 
-    fun toUpcoming(calendarOwner: String) = UpcomingEvent(
+    fun toUpcoming(account: String) = UpcomingEvent(
         eventId = id ?: -1,
         calendarId = calendarId,
         title = title,
         location = location,
         description = description,
         organizer = organizer,
-        calendarOwner = calendarOwner,
+        account = account,
         begin = startMillis(),
         end = endMillis(),
         allDay = allDay,
