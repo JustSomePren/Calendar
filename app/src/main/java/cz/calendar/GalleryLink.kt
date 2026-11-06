@@ -22,7 +22,6 @@ object GalleryLink {
     const val PACKAGE = "com.justsomepren.gallery"
     private const val AUTHORITY = "com.justsomepren.gallery.link"
     private const val ACTION_SHOW = "com.justsomepren.gallery.action.SHOW_PHOTOS"
-    private const val ACTION_CHANGED = "com.justsomepren.gallery.action.CALENDAR_CHANGED"
     private const val CERT = "BF2470A915F0720FD2A30DF36309D29ADF755AE6CD6221FA0FF00553684C6D4C"
 
     // Photos taken a bit before or after a timed event still belong to it
@@ -56,8 +55,10 @@ object GalleryLink {
             .onFailure { Toast.makeText(context, "Galerii se nepodařilo otevřít", Toast.LENGTH_SHORT).show() }
     }
 
-    // The gallery then reads the vacations again
-    fun notifyChanged(context: Context) = context.sendBroadcast(Intent(ACTION_CHANGED).setPackage(PACKAGE))
+    // The gallery then reads the vacations again. A provider call, so only the gallery receives it.
+    fun notifyChanged(context: Context) {
+        runCatching { context.contentResolver.call(Uri.parse("content://$AUTHORITY"), "calendar_changed", null, null) }
+    }
 
     // Start and end in millis, end exclusive. Vacations and all-day events take whole days.
     fun window(draft: EventDraft): Pair<Long, Long> {

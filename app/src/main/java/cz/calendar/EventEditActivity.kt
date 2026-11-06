@@ -158,7 +158,9 @@ private fun EventEditScreen(
                     settings.setWatch(savedId, saved.watch)
                     settings.setVacation(savedId, saved.vacation)
                 }
-                if (settings.hasVacations || original?.vacation != null) GalleryLink.notifyChanged(context)
+                if (settings.hasVacations || original?.vacation != null) {
+                    withContext(Dispatchers.IO) { GalleryLink.notifyChanged(context) }
+                }
                 BackgroundWork.refreshNow(context)
                 onClose()
             } else {
