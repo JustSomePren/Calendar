@@ -81,6 +81,39 @@ Samsung kalendář se na telefonech jiných značek synchronizovat nedá. Na tel
 - Po změně v kalendáři se upozornění a widget přepočítají jednou. Změny ze synchronizace se slučují (30 s až 2 min).
 - Každý přepočet je jedno čtení kalendáře na 7 dní dopředu, trvá zlomek sekundy.
 
+## Podpisový klíč (jednou, před první instalací)
+
+Klíč není v repozitáři (je veřejný). Obě aplikace, Kalendář i Galerie, mají **stejný** klíč,
+díky tomu se navzájem poznají a nová verze se vždy nainstaluje přes starou.
+
+1. Na GitHubu otevři repozitář → **Settings** → **Secrets and variables** → **Actions**.
+2. **New repository secret**, název `SIGNING_KEY`, hodnota = celý obsah souboru `SIGNING_KEY.txt`.
+3. **New repository secret**, název `SIGNING_KEY_PASSWORD`, hodnota = obsah `SIGNING_KEY_PASSWORD.txt`.
+4. Totéž udělej v druhém repozitáři (Calendar i Photo_Gallery).
+5. V **Actions** spusť znovu poslední běh **Build APK** (bez klíče skončí chybou „Chybí secret SIGNING_KEY“).
+
+Soubor `podpisovy-klic.p12` a heslo si **schovej** (správce hesel nebo soukromý Disk).
+Bez nich nepůjde vydat novou verzi, která se nainstaluje přes starou, a Google záloha se nevrátí.
+Do repozitáře je nikdy nedávej.
+
+Vlastní sestavení s tímto klíčem: nastav proměnné `SIGNING_KEY_FILE` (cesta k `.p12`) a `SIGNING_KEY_PASSWORD`.
+Bez nich se APK podepíše vývojovým klíčem počítače a přes verzi z GitHubu se nenainstaluje.
+
+## Záloha a nová instalace
+
+Všechno, co si aplikace pamatuje (kategorie, skryté kalendáře, pracovní filtr, priority,
+upozornění, dovolené), se **samo zálohuje do Google účtu** a po nové instalaci se vrátí:
+
+- Telefon musí mít zapnuté *Nastavení → Google → Zálohování*.
+- Záloha běží zhruba jednou denně (v noci při nabíjení na Wi-Fi), takže dnešní změny v ní ještě být nemusí.
+- Funguje jen se stejným podpisovým klíčem (viz výše).
+
+Před odinstalací proto pro jistotu: *Nastavení → Záloha → Uložit do souboru*. Po nové instalaci
+*Načíst ze souboru*. Samotné události jsou v Google Kalendáři, ty se vrátí vždy.
+
+Na stejném telefonu sedí všechno. Na **novém telefonu** Android kalendáře a události očísluje znovu,
+takže nastavení u konkrétních kalendářů a událostí se nemusí spárovat.
+
 ## Instalace na telefon
 
 1. Na GitHubu otevři **Actions** → poslední běh **Build APK**.

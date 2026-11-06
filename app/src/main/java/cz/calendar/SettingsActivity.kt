@@ -1,5 +1,6 @@
 package cz.calendar
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings as SystemSettings
@@ -103,6 +104,7 @@ private fun SettingsScreen(repository: CalendarRepository, settings: Settings, o
             WorkFilterSection(settings)
             NotificationsSection()
             ImportSection(calendars.filter { it.writable }, repository, settings)
+            BackupSection(settings)
         }
     }
 }
@@ -249,5 +251,44 @@ private fun ImportSection(calendars: List<CalendarInfo>, repository: CalendarRep
         OutlinedButton(onClick = { picker.launch(arrayOf("text/calendar", "text/x-vcalendar", "application/octet-stream", "*/*")) }) {
             Text("Vybrat soubory .ics")
         }
+    }
+}
+
+@Composable
+private fun BackupSection(settings: Settings) {
+    val context = LocalContext.current
+    fun toast(text: String) = Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+
+    val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        val ok = runCatching {
+            context.contentResolver.openOutputStream(uri)!!.use { it.write(settings.exportBackup().toByteArray()) }
+        }.isSuccess
+        toast(if (ok) "Záloha uložena" else "Uložení se nepovedlo")
+    }
+    val load = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        val ok = runCatching {
+            val json = context.contentResolver.openInputStream(uri)!!.use { it.readBytes().decodeToString() }
+            settings.restoreBackup(json)
+        }.isSuccess
+        if (!ok) {
+            toast("Soubor se nepodařilo načíst")
+            return@rememberLauncherForActivityResult
+        }
+        toast("Záloha načtena")
+        BackgroundWork.refreshNow(context)
+        kotlin.concurrent.thread { GalleryLink.notifyChanged(context) }
+        (context as? Activity)?.recreate()
+    }
+
+    SectionTitle("Záloha")
+    Hint(
+        "Nastavení se samo zálohuje do Google účtu (zhruba jednou denně) a po nové instalaci se vrátí. " +
+            "Před odinstalací ho můžeš pro jistotu uložit i do souboru.",
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = { save.launch("kalendar-zaloha.json") }) { Text("Uložit do souboru") }
+        OutlinedButton(onClick = { load.launch(arrayOf("application/json", "*/*")) }) { Text("Načíst ze souboru") }
     }
 }

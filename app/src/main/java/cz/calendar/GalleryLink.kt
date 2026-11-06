@@ -22,7 +22,7 @@ object GalleryLink {
     const val PACKAGE = "com.justsomepren.gallery"
     private const val AUTHORITY = "com.justsomepren.gallery.link"
     private const val ACTION_SHOW = "com.justsomepren.gallery.action.SHOW_PHOTOS"
-    private const val CERT = "BF2470A915F0720FD2A30DF36309D29ADF755AE6CD6221FA0FF00553684C6D4C"
+    private const val CERT = "8B48624FEFF248DEBB0906A02E0255030B3FE85CE5D2C2420FA653CB2ED81ABE"
 
     // Photos taken a bit before or after a timed event still belong to it
     private val BEFORE = Duration.ofMinutes(15)

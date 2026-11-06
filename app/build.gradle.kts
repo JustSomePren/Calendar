@@ -17,10 +17,22 @@ android {
         versionName = "2.0"
     }
 
-    // Shared debug key, so a newer APK installs over the old one
+    // The key is not in the repository. GitHub Actions gets it from secrets (see README),
+    // without it the build uses this computer's own debug key.
+    val keyFile = System.getenv("SIGNING_KEY_FILE")
     signingConfigs {
-        getByName("debug") {
-            storeFile = file("debug.keystore")
+        if (keyFile != null) {
+            create("own") {
+                storeFile = file(keyFile)
+                storePassword = System.getenv("SIGNING_KEY_PASSWORD")
+                keyAlias = "release"
+                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+            }
+        }
+    }
+    buildTypes {
+        debug {
+            signingConfigs.findByName("own")?.let { signingConfig = it }
         }
     }
 

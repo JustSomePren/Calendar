@@ -105,6 +105,10 @@ class Settings(context: Context) {
         get() = prefs.getStringSet("fired_reminders", emptySet()).orEmpty()
         set(value) = prefs.edit().putStringSet("fired_reminders", value).apply()
 
+    fun exportBackup(): String = Backup.export(prefs)
+
+    fun restoreBackup(json: String) = Backup.restore(json, prefs)
+
     private fun longSet(key: String) = prefs.getStringSet(key, emptySet()).orEmpty().map { it.toLong() }.toSet()
 
     private fun putLongSet(key: String, value: Set<Long>) =
