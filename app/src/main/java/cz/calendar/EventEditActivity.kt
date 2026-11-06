@@ -159,7 +159,9 @@ private fun EventEditScreen(
     val current = draft
     val calendar = calendars.find { it.id == current?.calendarId }
     val editable = calendar?.writable == true
-    val recurring = original?.rule != null
+    // An occurrence changed on its own has no rule but still belongs to a series
+    val changedOccurrence = original?.originalId != null
+    val recurring = original?.rule != null || changedOccurrence
     val occurrence = recurring && current?.instanceBegin != null
     val onlyLocalChanges = current != null && current.id != null &&
         current.copy(priority = Priority.NORMAL, watch = Watch.AUTO) == original?.copy(priority = Priority.NORMAL, watch = Watch.AUTO)
@@ -220,6 +222,7 @@ private fun EventEditScreen(
                     editable = editable,
                     canChangeCalendar = current.id == null,
                     recurring = recurring,
+                    changedOccurrence = changedOccurrence,
                     autoHint = autoHint,
                     onChange = { draft = it },
                 )
@@ -261,7 +264,10 @@ private fun EventEditScreen(
                             Text("Jen tento výskyt")
                         }
                     }
-                    TextButton(onClick = { commit { repository.deleteEvent(id); null } }) {
+                    if (changedOccurrence) {
+                        TextButton(onClick = { commit { repository.cancelOccurrence(id); null } }) { Text("Jen tento výskyt") }
+                    }
+                    TextButton(onClick = { commit { repository.deleteEvent(current.originalId ?: id); null } }) {
                         Text(if (recurring) "Celou sérii" else "Smazat")
                     }
                     TextButton(onClick = { showDelete = false }) { Text("Zrušit") }
@@ -280,6 +286,7 @@ private fun EventForm(
     editable: Boolean,
     canChangeCalendar: Boolean,
     recurring: Boolean,
+    changedOccurrence: Boolean,
     autoHint: String,
     onChange: (EventDraft) -> Unit,
 ) {
@@ -289,6 +296,8 @@ private fun EventForm(
     ) {
         if (!editable) {
             Hint("Tento kalendář je jen pro čtení.")
+        } else if (changedOccurrence) {
+            Hint("Samostatně změněný výskyt opakované události, úpravy platí jen pro něj.")
         } else if (recurring) {
             Hint("Opakovaná událost. Při uložení vybereš, jestli změnit jen tento výskyt, nebo celou sérii.")
         }
@@ -322,7 +331,10 @@ private fun EventForm(
             selected = draft.calendarId,
             enabled = editable && canChangeCalendar,
         ) { onChange(draft.copy(calendarId = it)) }
-        ChoiceRow("Opakování", repeatChoices(originalRule), draft.rule, editable) { onChange(draft.copy(rule = it)) }
+        // A single changed occurrence cannot repeat on its own
+        ChoiceRow("Opakování", repeatChoices(originalRule), draft.rule, editable && !changedOccurrence) {
+            onChange(draft.copy(rule = it))
+        }
         // Reminder settings live only in this app, so they work even for read-only calendars
         ChoiceRow("Upozornění", watchOptions, draft.watch, enabled = true) { onChange(draft.copy(watch = it)) }
         if (draft.watch == Watch.AUTO) Hint(autoHint)

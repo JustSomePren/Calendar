@@ -252,6 +252,16 @@ class CalendarRepository(private val resolver: ContentResolver) {
         resolver.delete(ContentUris.withAppendedId(Events.CONTENT_URI, id), null, null)
     }
 
+    // Cancels an occurrence that was already changed on its own
+    fun cancelOccurrence(exceptionId: Long) {
+        resolver.update(
+            ContentUris.withAppendedId(Events.CONTENT_URI, exceptionId),
+            contentValuesOf(Events.STATUS to Events.STATUS_CANCELED),
+            null,
+            null,
+        )
+    }
+
     // Cancels a single occurrence of a recurring event
     fun deleteOccurrence(id: Long, instanceBegin: Long) {
         val values = contentValuesOf(

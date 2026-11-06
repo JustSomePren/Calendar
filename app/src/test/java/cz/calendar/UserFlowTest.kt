@@ -6,6 +6,7 @@ import android.content.Intent
 import android.provider.CalendarContract.Events
 import android.widget.TextView
 import androidx.compose.ui.test.ComposeTimeoutException
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -178,6 +179,34 @@ class UserFlowTest {
         assertEquals(tomorrow, exception[Events.ORIGINAL_INSTANCE_TIME])
         assertEquals("Standup venku", exception[Events.TITLE])
         assertEquals("Standup", FakeCalendarProvider.event(daily)[Events.TITLE])
+    }
+
+    @Test
+    fun busyDayKeepsAddButtonInDayPanel() {
+        for (i in 0 until 16) addEvent("Schůzka $i", mapOf(Events.DTSTART to at(6) + i * 1800_000L, Events.DTEND to at(6) + (i + 1) * 1800_000L))
+        val intent = Intent(app, MainActivity::class.java).putExtra(EXTRA_DAY, today.toString())
+
+        ActivityScenario.launch<MainActivity>(intent).use {
+            waitForText("Schůzka 0")
+            val button = compose.onNode(hasClickAction() and hasText("Přidat událost")).fetchSemanticsNode()
+            assertTrue(button.boundsInWindow.height > 0f)
+        }
+    }
+
+    @Test
+    fun changedOccurrenceCannotRepeatAndCanBeCancelled() {
+        val series = addEvent("Úklid", mapOf(Events.RRULE to "FREQ=WEEKLY", Events.DTEND to null, Events.DURATION to "P3600S"))
+        val changed = addEvent("Úklid jindy", mapOf(Events.ORIGINAL_ID to series, Events.ORIGINAL_INSTANCE_TIME to at(9)))
+
+        ActivityScenario.launch<EventEditActivity>(editor(changed)).use {
+            waitForText("Samostatně změněný výskyt opakované události, úpravy platí jen pro něj.")
+            compose.onNode(hasClickAction() and hasText("Neopakovat")).assertIsNotEnabled()
+            compose.onNodeWithContentDescription("Smazat").performClick()
+            waitForText("Jen tento výskyt")
+            compose.onNodeWithText("Jen tento výskyt").performClick()
+            waitFor { FakeCalendarProvider.event(changed)[Events.STATUS] == Events.STATUS_CANCELED }
+        }
+        assertEquals("FREQ=WEEKLY", FakeCalendarProvider.event(series)[Events.RRULE])
     }
 
     @Test

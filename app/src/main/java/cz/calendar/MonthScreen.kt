@@ -33,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -307,7 +308,8 @@ private fun DaySheet(
         events = withContext(Dispatchers.IO) { repository.eventsByDay(day, day, hidden, important)[day].orEmpty() }
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    // Opens fully, so the add button under a long list is on screen
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
             Text(
                 day.format(DateTimeFormatter.ofPattern("EEEE d. MMMM", czech)).capitalized(),
@@ -318,7 +320,8 @@ private fun DaySheet(
             if (events.isEmpty()) {
                 Text("Žádné události", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            // Leaves room for the add button below even on a busy day
+            LazyColumn(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(events) { event ->
                     EventRow(event, onClick = { context.startActivity(openEventIntent(context, event)) })
                 }
