@@ -19,8 +19,16 @@ Zobrazuje kalendáře, které už má telefon synchronizované, tedy i všechny 
 V nastavení (ozubené kolo) má každý kalendář kategorii:
 
 - **Osobní** (výchozí): upozorní na všechny události
-- **Pracovní**: upozorní jen na události, kde je mezi účastníky některý z tvých e-mailů (a událost jsi neodmítl), nebo které obsahují zadané slovo (např. `testProjekt`) v názvu, poznámce či místě
-- **Tichý**: jen zobrazit, nikdy neupozorňovat
+- **Pracovní**: upozorní na události, které pořádáš ty, a na ty, kde je mezi účastníky některý z tvých e-mailů (a událost jsi neodmítl), nebo které obsahují zadané slovo (např. `testProjekt`) v názvu, poznámce či místě
+- **Tichý**: jen zobrazit, neupozorňovat
+
+U každé události jde v editoru kategorii přebít volbou **Upozornění**:
+
+- **Podle kalendáře** (výchozí): editor rovnou ukáže, jestli upozornění přijde
+- **Vždy (sledovat)**: třeba cizí opakovaná porada nebo událost, kde tě nikdo neoznačil
+- **Nikdy**: třeba týdenní věc v osobním kalendáři, na kterou upozorňovat nepotřebuješ
+
+U opakované události volba platí pro celou sérii. Vypnout upozorňování jde i tlačítkem **Neupozorňovat** přímo v oznámení.
 
 ## Kdy přijde upozornění
 
@@ -35,12 +43,11 @@ V nastavení (ozubené kolo) má každý kalendář kategorii:
 
 Priorita události (nastavuje se v editoru) to upraví:
 
-- **Bez upozornění**: nic
 - **Nízká**: jen nejbližší upozornění, potichu
 - **Normální**: podle tabulky
 - **Vysoká**: navíc 2 h a večer předem (u celodenních i ráno v 8:00), vyskakovací upozornění; v kalendáři má před názvem „!“
 
-Priorita se ukládá jen v této aplikaci, do Googlu se nepřenáší.
+Priorita a volba upozornění se ukládají jen v této aplikaci, do Googlu se nepřenášejí.
 
 Aby upozornění nechodila dvakrát, vypni je v aplikaci Google Kalendář (v nastavení je na to tlačítko).
 

@@ -15,6 +15,8 @@ data class UpcomingEvent(
     val location: String = "",
     val description: String = "",
     val organizer: String = "",
+    // Account of the calendar the event is in, events organized by it are mine
+    val calendarOwner: String = "",
     val begin: Long,
     val end: Long,
     val allDay: Boolean = false,
@@ -38,8 +40,6 @@ private val morningEnds = LocalTime.of(9, 0)
  * High priority adds an earlier one and, for all-day events, a morning one.
  */
 fun reminderTimes(event: UpcomingEvent, priority: Priority, zone: ZoneId): List<Long> {
-    if (priority == Priority.NONE) return emptyList()
-
     val days = eventDays(event.begin, event.end, if (event.allDay) ZoneOffset.UTC else zone)
     val startDay = days.start
     val multiDay = days.endInclusive > startDay
@@ -68,6 +68,28 @@ fun reminderTimes(event: UpcomingEvent, priority: Priority, zone: ZoneId): List<
     // All-day events may still remind on their own morning
     val deadline = if (event.allDay || multiDay) event.end else event.begin
     return times.filter { it < deadline }.distinct().sorted()
+}
+
+val UpcomingEvent.isMine: Boolean
+    get() = organizer.isBlank() || organizer.equals(calendarOwner, ignoreCase = true)
+
+fun shouldNotify(category: Category, watch: Watch, mine: Boolean, matchesFilter: () -> Boolean): Boolean = when (watch) {
+    Watch.ALWAYS -> true
+    Watch.NEVER -> false
+    Watch.AUTO -> when (category) {
+        Category.PERSONAL -> true
+        Category.QUIET -> false
+        Category.WORK -> mine || matchesFilter()
+    }
+}
+
+// Explains what "Podle kalendáře" means for one event
+fun autoReminderHint(category: Category, mine: Boolean, matchesFilter: Boolean): String = when {
+    category == Category.PERSONAL -> "Osobní kalendář: upozorní."
+    category == Category.QUIET -> "Tichý kalendář: neupozorní."
+    mine -> "Pracovní kalendář: upozorní, událost je tvoje."
+    matchesFilter -> "Pracovní kalendář: upozorní podle pracovního filtru."
+    else -> "Pracovní kalendář: neupozorní. Pro sledování zvol „Vždy“."
 }
 
 fun matchesWorkFilter(

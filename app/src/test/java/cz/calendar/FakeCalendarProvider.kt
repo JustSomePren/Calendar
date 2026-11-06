@@ -27,11 +27,18 @@ class FakeCalendarProvider : ContentProvider() {
             nextId = 100L
         }
 
-        fun addCalendar(id: Long, name: String, writable: Boolean = true, color: Int = 0xFF039BE5.toInt()) {
+        fun addCalendar(
+            id: Long,
+            name: String,
+            writable: Boolean = true,
+            color: Int = 0xFF039BE5.toInt(),
+            owner: String = "ja@gmail.com",
+        ) {
             calendars += mutableMapOf(
                 Calendars._ID to id,
                 Calendars.CALENDAR_DISPLAY_NAME to name,
-                Calendars.ACCOUNT_NAME to "ja@gmail.com",
+                Calendars.ACCOUNT_NAME to owner,
+                Calendars.OWNER_ACCOUNT to owner,
                 Calendars.CALENDAR_COLOR to color,
                 Calendars.CALENDAR_ACCESS_LEVEL to if (writable) Calendars.CAL_ACCESS_OWNER else Calendars.CAL_ACCESS_READ,
                 Calendars.IS_PRIMARY to if (id == 1L) 1 else 0,
@@ -76,12 +83,13 @@ class FakeCalendarProvider : ContentProvider() {
         .map { event ->
             val begin = event[Events.DTSTART] as Long
             val end = (event[Events.DTEND] as Long?) ?: (begin + parseDuration(event[Events.DURATION] as String?).toMillis())
-            val color = calendars.first { it[Calendars._ID] == event[Events.CALENDAR_ID] }[Calendars.CALENDAR_COLOR]
+            val calendar = calendars.first { it[Calendars._ID] == event[Events.CALENDAR_ID] }
             event + mapOf(
+                Instances.OWNER_ACCOUNT to calendar[Calendars.OWNER_ACCOUNT],
                 Instances.EVENT_ID to event[Events._ID],
                 Instances.BEGIN to begin,
                 Instances.END to end,
-                Instances.DISPLAY_COLOR to color,
+                Instances.DISPLAY_COLOR to calendar[Calendars.CALENDAR_COLOR],
             )
         }
         .filter { (it[Instances.BEGIN] as Long) < to && (it[Instances.END] as Long) > from }

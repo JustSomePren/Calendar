@@ -18,6 +18,9 @@ data class EventDraft(
     val end: LocalDateTime,
     val rule: String? = null,
     val priority: Priority = Priority.NORMAL,
+    val watch: Watch = Watch.AUTO,
+    // Read only, empty for new events (they will be mine)
+    val organizer: String = "",
     val attendees: List<String> = emptyList(),
     // Set when a recurring event was opened from one of its occurrences
     val instanceBegin: Long? = null,
@@ -40,6 +43,20 @@ data class EventDraft(
 
     private fun toMillis(time: LocalDateTime): Long =
         time.atZone(if (allDay) ZoneOffset.UTC else ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+    fun toUpcoming(calendarOwner: String) = UpcomingEvent(
+        eventId = id ?: -1,
+        calendarId = calendarId,
+        title = title,
+        location = location,
+        description = description,
+        organizer = organizer,
+        calendarOwner = calendarOwner,
+        begin = startMillis(),
+        end = endMillis(),
+        allDay = allDay,
+        recurring = rule != null,
+    )
 
     // Moving one occurrence moves the whole series by the same amount
     fun seriesStartMillis(): Long =

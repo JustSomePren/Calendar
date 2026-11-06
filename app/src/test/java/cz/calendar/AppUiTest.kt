@@ -74,6 +74,8 @@ class AppUiTest {
             compose.waitUntil(5_000) { compose.onAllNodesWithText("Zubař").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Praha").assertExists()
             compose.onNodeWithText("Vysoká").assertExists()
+            compose.onNodeWithText("Podle kalendáře").assertExists()
+            compose.onNodeWithText("Osobní kalendář: upozorní.").assertExists()
             compose.onNodeWithText("Účastníci").assertExists()
         }
     }

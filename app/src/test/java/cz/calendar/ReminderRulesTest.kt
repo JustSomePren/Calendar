@@ -86,8 +86,24 @@ class ReminderRulesTest {
     }
 
     @Test
-    fun noneMeansNoReminders() {
-        assertTrue(reminderTimes(timed(15), Priority.NONE, zone).isEmpty())
+    fun categoryAndWatchDecideWhetherToNotify() {
+        val never = { error("Filter should not be needed") }
+
+        assertTrue(shouldNotify(Category.PERSONAL, Watch.AUTO, mine = false, never))
+        assertFalse(shouldNotify(Category.PERSONAL, Watch.NEVER, mine = true, never))
+        assertFalse(shouldNotify(Category.QUIET, Watch.AUTO, mine = true, never))
+        assertTrue(shouldNotify(Category.QUIET, Watch.ALWAYS, mine = false, never))
+        assertTrue(shouldNotify(Category.WORK, Watch.AUTO, mine = true, never))
+        assertTrue(shouldNotify(Category.WORK, Watch.ALWAYS, mine = false, never))
+        assertTrue(shouldNotify(Category.WORK, Watch.AUTO, mine = false) { true })
+        assertFalse(shouldNotify(Category.WORK, Watch.AUTO, mine = false) { false })
+    }
+
+    @Test
+    fun eventIsMineWhenICreatedIt() {
+        assertTrue(timed(15).copy(organizer = "Ja@Firma.cz", calendarOwner = "ja@firma.cz").isMine)
+        assertTrue(timed(15).copy(organizer = "", calendarOwner = "ja@firma.cz").isMine)
+        assertFalse(timed(15).copy(organizer = "sef@firma.cz", calendarOwner = "ja@firma.cz").isMine)
     }
 
     @Test

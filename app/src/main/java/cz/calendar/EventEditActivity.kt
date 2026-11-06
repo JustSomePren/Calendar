@@ -83,6 +83,7 @@ class EventEditActivity : ComponentActivity() {
 private val dateFormat = DateTimeFormatter.ofPattern("EEE d. M. yyyy", czech)
 private val timeFormat = DateTimeFormatter.ofPattern("HH:mm")
 private val priorityOptions = Priority.entries.map { it to it.label }
+private val watchOptions = Watch.entries.map { it to it.label }
 
 private fun defaultCalendar(calendars: List<CalendarInfo>, lastUsed: Long): CalendarInfo? {
     val writable = calendars.filter { it.writable }
@@ -116,7 +117,7 @@ private fun EventEditScreen(
         val loaded = withContext(Dispatchers.IO) {
             val all = repository.calendars()
             val event = if (eventId != null) {
-                repository.event(eventId, instanceBegin)?.copy(priority = settings.priority(eventId))
+                repository.event(eventId, instanceBegin)?.copy(priority = settings.priority(eventId), watch = settings.watch(eventId))
             } else {
                 defaultCalendar(all, settings.lastCalendar)?.let { EventDraft.new(it.id, day) }
             }
@@ -134,12 +135,15 @@ private fun EventEditScreen(
     }
 
     // Runs a change on the calendar provider, then closes the editor
-    fun commit(priority: Priority? = null, action: () -> Long?) {
+    fun commit(saved: EventDraft? = null, action: () -> Long?) {
         scope.launch {
             val result = withContext(Dispatchers.IO) { runCatching(action) }
             if (result.isSuccess) {
                 val savedId = result.getOrNull()
-                if (savedId != null && priority != null) settings.setPriority(savedId, priority)
+                if (savedId != null && saved != null) {
+                    settings.setPriority(savedId, saved.priority)
+                    settings.setWatch(savedId, saved.watch)
+                }
                 BackgroundWork.refreshNow(context)
                 onClose()
             } else {
@@ -153,10 +157,16 @@ private fun EventEditScreen(
     val editable = calendar?.writable == true
     val recurring = original?.rule != null
     val occurrence = recurring && current?.instanceBegin != null
+    val autoHint = current?.let { event ->
+        val upcoming = event.toUpcoming(calendar?.owner.orEmpty())
+        val people = event.attendees.map { email -> statuses.find { it.email.equals(email, ignoreCase = true) } ?: Attendee(email, 0) }
+        val matches = matchesWorkFilter(upcoming, people, settings.workEmails, settings.workKeywords)
+        autoReminderHint(settings.category(event.calendarId), upcoming.isMine, matches)
+    }.orEmpty()
 
     fun saveSeries(event: EventDraft) {
         settings.lastCalendar = event.calendarId
-        commit(event.priority) { repository.saveEvent(event) }
+        commit(event) { repository.saveEvent(event) }
     }
 
     Scaffold(
@@ -177,7 +187,7 @@ private fun EventEditScreen(
                             enabled = current.isValid,
                             onClick = {
                                 when {
-                                    !editable -> commit(current.priority) { current.id }
+                                    !editable -> commit(current) { current.id }
                                     occurrence -> showSaveChoice = true
                                     else -> saveSeries(current)
                                 }
@@ -203,6 +213,7 @@ private fun EventEditScreen(
                     editable = editable,
                     canChangeCalendar = current.id == null,
                     recurring = recurring,
+                    autoHint = autoHint,
                     onChange = { draft = it },
                 )
             }
@@ -216,7 +227,7 @@ private fun EventEditScreen(
             text = { Text("Účastníci a opakování se mění jen u celé série.") },
             confirmButton = {
                 Column(horizontalAlignment = Alignment.End) {
-                    TextButton(onClick = { commit(current.priority) { repository.saveOccurrence(current) } }) {
+                    TextButton(onClick = { commit(current) { repository.saveOccurrence(current) } }) {
                         Text("Jen tento výskyt")
                     }
                     TextButton(onClick = { saveSeries(current) }) { Text("Celou sérii") }
@@ -262,6 +273,7 @@ private fun EventForm(
     editable: Boolean,
     canChangeCalendar: Boolean,
     recurring: Boolean,
+    autoHint: String,
     onChange: (EventDraft) -> Unit,
 ) {
     Column(
@@ -304,8 +316,13 @@ private fun EventForm(
             enabled = editable && canChangeCalendar,
         ) { onChange(draft.copy(calendarId = it)) }
         ChoiceRow("Opakování", repeatChoices(originalRule), draft.rule, editable) { onChange(draft.copy(rule = it)) }
-        // Priority lives only in this app, so it can be set even for read-only calendars
-        ChoiceRow("Priorita", priorityOptions, draft.priority, enabled = true) { onChange(draft.copy(priority = it)) }
+        // Reminder settings live only in this app, so they work even for read-only calendars
+        ChoiceRow("Upozornění", watchOptions, draft.watch, enabled = true) { onChange(draft.copy(watch = it)) }
+        if (draft.watch == Watch.AUTO) Hint(autoHint)
+        if (recurring && draft.watch != Watch.AUTO) Hint("Platí pro všechna opakování.")
+        ChoiceRow("Priorita", priorityOptions, draft.priority, enabled = draft.watch != Watch.NEVER) {
+            onChange(draft.copy(priority = it))
+        }
 
         OutlinedTextField(
             value = draft.location,

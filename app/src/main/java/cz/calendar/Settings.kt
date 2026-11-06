@@ -4,12 +4,18 @@ import android.content.Context
 
 enum class Category(val label: String, val hint: String) {
     PERSONAL("Osobní", "Upozorní na všechny události"),
-    WORK("Pracovní", "Upozorní jen na události podle pracovního filtru"),
-    QUIET("Tichý", "Jen zobrazit, nikdy neupozorňovat"),
+    WORK("Pracovní", "Upozorní na tvoje události a na ty podle pracovního filtru"),
+    QUIET("Tichý", "Jen zobrazit, neupozorňovat"),
+}
+
+// Per-event choice that overrides the calendar category
+enum class Watch(val label: String) {
+    AUTO("Podle kalendáře"),
+    ALWAYS("Vždy (sledovat)"),
+    NEVER("Nikdy"),
 }
 
 enum class Priority(val label: String) {
-    NONE("Bez upozornění"),
     LOW("Nízká"),
     NORMAL("Normální"),
     HIGH("Vysoká"),
@@ -49,6 +55,16 @@ class Settings(context: Context) {
     fun setPriority(eventId: Long, priority: Priority) {
         val edit = prefs.edit()
         if (priority == Priority.NORMAL) edit.remove("priority_$eventId") else edit.putString("priority_$eventId", priority.name)
+        edit.apply()
+    }
+
+    fun watch(eventId: Long): Watch =
+        prefs.getString("watch_$eventId", null)?.let { name -> Watch.entries.find { it.name == name } }
+            ?: Watch.AUTO
+
+    fun setWatch(eventId: Long, watch: Watch) {
+        val edit = prefs.edit()
+        if (watch == Watch.AUTO) edit.remove("watch_$eventId") else edit.putString("watch_$eventId", watch.name)
         edit.apply()
     }
 

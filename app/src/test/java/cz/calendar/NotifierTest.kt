@@ -3,6 +3,7 @@ package cz.calendar
 import android.app.AlarmManager
 import android.app.Application
 import android.app.NotificationManager
+import android.content.Intent
 import android.provider.CalendarContract.Attendees
 import android.provider.CalendarContract.Events
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -23,7 +24,7 @@ class NotifierTest {
     fun setUp() {
         app = setUpFakeCalendar()
         FakeCalendarProvider.addCalendar(1, "Osobní")
-        FakeCalendarProvider.addCalendar(2, "Práce")
+        FakeCalendarProvider.addCalendar(2, "Práce", owner = "ja@firma.cz")
         FakeCalendarProvider.addCalendar(3, "Svátky")
         settings = Settings(app)
         settings.setCategory(2, Category.WORK)
@@ -34,11 +35,18 @@ class NotifierTest {
     }
 
     // Starts in 20 minutes, so its "30 min before" reminder is due now
-    private fun soon(calendar: Long, title: String, description: String = "") = FakeCalendarProvider.addEvent(
+    // Work events are someone else's unless said otherwise
+    private fun soon(
+        calendar: Long,
+        title: String,
+        description: String = "",
+        organizer: String = if (calendar == 2L) "sef@firma.cz" else "",
+    ) = FakeCalendarProvider.addEvent(
         mapOf(
             Events.CALENDAR_ID to calendar,
             Events.TITLE to title,
             Events.DESCRIPTION to description,
+            Events.ORGANIZER to organizer,
             Events.DTSTART to now + 20 * 60_000,
             Events.DTEND to now + 80 * 60_000,
             Events.ALL_DAY to 0,
@@ -58,18 +66,40 @@ class NotifierTest {
             Attendees.ATTENDEE_EMAIL to "ja@firma.cz",
             Attendees.ATTENDEE_STATUS to Attendees.ATTENDEE_STATUS_ACCEPTED,
         )
+        soon(2, "Moje review", organizer = "ja@firma.cz")
         soon(2, "Cizí schůzka")
         soon(3, "Svátek")
 
         EventNotifier.run(app, now)
 
-        assertEquals(listOf("Porada", "Sprint", "Zubař"), shownTitles())
+        assertEquals(listOf("Moje review", "Porada", "Sprint", "Zubař"), shownTitles())
     }
 
     @Test
-    fun priorityNoneIsSilentAndNothingRepeats() {
-        val quiet = soon(1, "Nevadí")
-        settings.setPriority(quiet, Priority.NONE)
+    fun watchOverridesCategory() {
+        settings.setWatch(soon(2, "Cizí standup"), Watch.ALWAYS)
+        settings.setWatch(soon(3, "Svátek, co chci"), Watch.ALWAYS)
+        settings.setWatch(soon(1, "Týdenní úklid"), Watch.NEVER)
+
+        EventNotifier.run(app, now)
+
+        assertEquals(listOf("Cizí standup", "Svátek, co chci"), shownTitles())
+    }
+
+    @Test
+    fun muteButtonStopsFurtherReminders() {
+        val weekly = soon(1, "Týdenní úklid")
+        val mute = Intent(app, ReminderReceiver::class.java)
+            .setAction(ACTION_MUTE)
+            .putExtra(EXTRA_EVENT_ID, weekly)
+
+        ReminderReceiver().onReceive(app, mute)
+
+        assertEquals(Watch.NEVER, settings.watch(weekly))
+    }
+
+    @Test
+    fun nothingRepeats() {
         soon(1, "Zubař")
 
         EventNotifier.run(app, now)

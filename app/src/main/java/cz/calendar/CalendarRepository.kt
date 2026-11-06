@@ -22,6 +22,7 @@ data class CalendarInfo(
     val color: Int,
     val writable: Boolean,
     val primary: Boolean,
+    val owner: String = "",
 )
 
 data class CalendarEvent(
@@ -59,6 +60,7 @@ class CalendarRepository(private val resolver: ContentResolver) {
             Calendars.CALENDAR_COLOR,
             Calendars.CALENDAR_ACCESS_LEVEL,
             Calendars.IS_PRIMARY,
+            Calendars.OWNER_ACCOUNT,
         )
         return query(Calendars.CONTENT_URI, projection, "${Calendars.SYNC_EVENTS} = 1", sortOrder = Calendars.ACCOUNT_NAME) { c ->
             CalendarInfo(
@@ -68,6 +70,7 @@ class CalendarRepository(private val resolver: ContentResolver) {
                 color = c.getInt(3),
                 writable = c.getInt(4) >= Calendars.CAL_ACCESS_CONTRIBUTOR,
                 primary = c.getInt(5) == 1,
+                owner = c.getString(6).orEmpty(),
             )
         }
     }
@@ -131,6 +134,7 @@ class CalendarRepository(private val resolver: ContentResolver) {
             Instances.END,
             Instances.ALL_DAY,
             Instances.RRULE,
+            Instances.OWNER_ACCOUNT,
         )
         val result = mutableListOf<UpcomingEvent>()
         instances(from, to, projection) { c ->
@@ -145,6 +149,7 @@ class CalendarRepository(private val resolver: ContentResolver) {
                 end = c.getLong(7),
                 allDay = c.getInt(8) == 1,
                 recurring = !c.getString(9).isNullOrBlank(),
+                calendarOwner = c.getString(10).orEmpty(),
             )
         }
         return result
@@ -203,6 +208,7 @@ class CalendarRepository(private val resolver: ContentResolver) {
                 rule = rule,
                 instanceBegin = occurrence,
                 seriesStart = occurrence?.let { seriesStart },
+                organizer = organizer,
             ) to organizer
         }.firstOrNull() ?: return null
 

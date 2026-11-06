@@ -36,10 +36,8 @@ object EventNotifier {
         // Multi-day events remind 3 days ahead, so look a bit further
         val planned = repository.upcoming(today.minusDays(1), today.plusDays(5))
             .filter { event ->
-                when (settings.category(event.calendarId)) {
-                    Category.PERSONAL -> true
-                    Category.QUIET -> false
-                    Category.WORK -> matchesWorkFilter(event, repository.attendees(event.eventId), emails, keywords)
+                shouldNotify(settings.category(event.calendarId), settings.watch(event.eventId), event.isMine) {
+                    matchesWorkFilter(event, repository.attendees(event.eventId), emails, keywords)
                 }
             }
             .flatMap { event ->
@@ -84,11 +82,23 @@ object EventNotifier {
             .setCategory(NotificationCompat.CATEGORY_EVENT)
             .setContentIntent(pending)
             .setAutoCancel(true)
+            .addAction(0, "Neupozorňovat", muteIntent(context, event.eventId, id))
             .setWhen(event.begin)
             .setShowWhen(false)
             .build()
         context.getSystemService(NotificationManager::class.java).notify(id, notification)
     }
+
+    // Turns reminders off for the event, for a recurring one the whole series
+    private fun muteIntent(context: Context, eventId: Long, notificationId: Int) = PendingIntent.getBroadcast(
+        context,
+        notificationId,
+        Intent(context, ReminderReceiver::class.java)
+            .setAction(ACTION_MUTE)
+            .putExtra(EXTRA_EVENT_ID, eventId)
+            .putExtra(EXTRA_NOTIFICATION_ID, notificationId),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
 
     private fun channelFor(priority: Priority) = when (priority) {
         Priority.HIGH -> CHANNEL_HIGH
@@ -132,11 +142,18 @@ object EventNotifier {
 }
 
 private const val ACTION_NEW_DAY = "cz.calendar.NEW_DAY"
+const val ACTION_MUTE = "cz.calendar.MUTE"
+const val EXTRA_NOTIFICATION_ID = "notification_id"
 
 // Fires for alarms, after a restart or app update and when the clock changes
 class ReminderReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == ACTION_MUTE) {
+            Settings(context).setWatch(intent.getLongExtra(EXTRA_EVENT_ID, -1), Watch.NEVER)
+            context.getSystemService(NotificationManager::class.java).cancel(intent.getIntExtra(EXTRA_NOTIFICATION_ID, 0))
+            return
+        }
         // Anything but a reminder may also change what the widget shows
         if (intent.action != null) BackgroundWork.start(context, refreshWidget = true)
         val pending = goAsync()

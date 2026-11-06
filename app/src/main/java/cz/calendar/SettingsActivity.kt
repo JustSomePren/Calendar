@@ -191,7 +191,8 @@ private fun NotificationsSection() {
             "• ostatní: 30 min předem\n" +
             "• opakovaná událost nebo nízká priorita: jen to nejbližší\n" +
             "• vysoká priorita: navíc dřív (2 h a večer předem, u celodenních i ráno v 8:00)\n" +
-            "Prioritu nastavíš u každé události v editoru.",
+            "U každé události jde v editoru zvolit Upozornění „Vždy (sledovat)“ nebo „Nikdy“ " +
+            "a prioritu. Vypnout ji jde i tlačítkem „Neupozorňovat“ přímo v oznámení.",
     )
     Hint("Aby upozornění nechodila dvakrát, vypni je v aplikaci Google Kalendář.")
     OutlinedButton(onClick = {
