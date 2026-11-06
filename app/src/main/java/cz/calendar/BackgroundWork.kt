@@ -17,6 +17,7 @@ private const val WATCH = "refresh-on-change"
 class RefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
+        repairIds(applicationContext)
         EventNotifier.run(applicationContext)
         MonthWidget().updateAll(applicationContext)
         // A synced change can move a vacation, so the gallery reads them again

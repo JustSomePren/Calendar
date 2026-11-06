@@ -105,6 +105,51 @@ class Settings(context: Context) {
         get() = prefs.getStringSet("fired_reminders", emptySet()).orEmpty()
         set(value) = prefs.edit().putStringSet("fired_reminders", value).apply()
 
+    // ---- Stable keys, so settings find their calendars and events on a new phone ----
+
+    val storedEventIds: Set<Long>
+        get() = idsWith(EVENT_KEYS)
+
+    val storedCalendarIds: Set<Long>
+        get() = idsWith(listOf("category_")) + hiddenCalendars + listOfNotNull(lastCalendar.takeIf { it >= 0 })
+
+    fun eventRef(eventId: Long): String? = prefs.getString("ref_event_$eventId", null)
+
+    fun setEventRef(eventId: Long, key: String?) = putOrRemove("ref_event_$eventId", key)
+
+    fun calendarRef(calendarId: Long): String? = prefs.getString("ref_calendar_$calendarId", null)
+
+    fun setCalendarRef(calendarId: Long, key: String) = putOrRemove("ref_calendar_$calendarId", key)
+
+    // Moves everything stored under the old ids to the new ones, in one go so swaps work
+    fun moveEvents(moves: Map<Long, Long>) = moveKeys(moves, EVENT_KEYS + "ref_event_")
+
+    fun moveCalendars(moves: Map<Long, Long>) {
+        moveKeys(moves, listOf("category_", "ref_calendar_"))
+        hiddenCalendars = hiddenCalendars.map { moves[it] ?: it }.toSet()
+        moves[lastCalendar]?.let { lastCalendar = it }
+    }
+
+    private fun moveKeys(moves: Map<Long, Long>, prefixes: List<String>) {
+        if (moves.isEmpty()) return
+        val all = prefs.all
+        val edit = prefs.edit()
+        val moved = prefixes.flatMap { prefix ->
+            moves.mapNotNull { (from, to) -> all["$prefix$from"]?.let { Triple(prefix, to, it) }?.also { edit.remove("$prefix$from") } }
+        }
+        moved.forEach { (prefix, to, value) -> edit.putString("$prefix$to", value as String) }
+        edit.commit()
+    }
+
+    private fun idsWith(prefixes: List<String>) =
+        prefs.all.keys.mapNotNull { key -> prefixes.firstOrNull { key.startsWith(it) }?.let { key.removePrefix(it).toLongOrNull() } }.toSet()
+
+    private fun putOrRemove(key: String, value: String?) {
+        val edit = prefs.edit()
+        if (value == null) edit.remove(key) else edit.putString(key, value)
+        edit.apply()
+    }
+
     fun exportBackup(): String = Backup.export(prefs)
 
     fun restoreBackup(json: String) = Backup.restore(json, prefs)
@@ -114,6 +159,8 @@ class Settings(context: Context) {
     private fun putLongSet(key: String, value: Set<Long>) =
         prefs.edit().putStringSet(key, value.map { it.toString() }.toSet()).apply()
 }
+
+private val EVENT_KEYS = listOf("priority_", "watch_", "vacation_")
 
 fun splitList(text: String): List<String> =
     text.split(',', ';', '\n').map { it.trim() }.filter { it.isNotEmpty() }

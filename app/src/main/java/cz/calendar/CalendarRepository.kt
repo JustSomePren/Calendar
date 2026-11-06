@@ -257,6 +257,27 @@ class CalendarRepository(private val resolver: ContentResolver) {
         resolver.insert(ContentUris.withAppendedId(Events.CONTENT_EXCEPTION_URI, id), values)
     }
 
+    // Account and Google calendar id, the same on every phone, unlike the id
+    fun calendarKeys(): Map<Long, String> =
+        query(
+            Calendars.CONTENT_URI,
+            arrayOf(Calendars._ID, Calendars.ACCOUNT_NAME, Calendars.ACCOUNT_TYPE, Calendars.NAME, Calendars.CALENDAR_DISPLAY_NAME),
+        ) { c ->
+            c.getLong(0) to listOf(c.getString(1), c.getString(2), c.getString(3) ?: c.getString(4)).joinToString("|") { it.orEmpty() }
+        }.toMap()
+
+    // Google event id once synced, otherwise title and start. The better key comes first.
+    fun eventKeys(calendars: Map<Long, String>, ids: Set<Long>? = null): Map<Long, List<String>> {
+        val selection = ids?.let { "${Events._ID} IN (${it.joinToString()})" }
+        val projection = arrayOf(Events._ID, Events.CALENDAR_ID, Events._SYNC_ID, Events.TITLE, Events.DTSTART, Events.DELETED)
+        return query(Events.CONTENT_URI, projection, selection) { c ->
+            val calendar = calendars[c.getLong(1)]
+            if (calendar == null || c.getInt(5) == 1) return@query null
+            val local = "$calendar|${c.getString(3).orEmpty()}|${c.getLong(4)}"
+            c.getLong(0) to listOfNotNull(c.getString(2)?.let { "$calendar|$it" }, local)
+        }.filterNotNull().filter { ids == null || it.first in ids }.toMap()
+    }
+
     fun exists(calendarId: Long, title: String, begin: Long): Boolean =
         query(
             Events.CONTENT_URI,

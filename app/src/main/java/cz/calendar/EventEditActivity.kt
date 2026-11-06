@@ -157,6 +157,7 @@ private fun EventEditScreen(
                     settings.setPriority(savedId, saved.priority)
                     settings.setWatch(savedId, saved.watch)
                     settings.setVacation(savedId, saved.vacation)
+                    settings.setEventRef(savedId, null)
                 }
                 if (settings.hasVacations || original?.vacation != null) {
                     withContext(Dispatchers.IO) { GalleryLink.notifyChanged(context) }

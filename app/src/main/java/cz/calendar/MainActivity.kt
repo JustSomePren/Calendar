@@ -38,6 +38,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         openDay.value = intent.dayExtra()
         BackgroundWork.start(this)
+        kotlin.concurrent.thread { repairIds(this) }
 
         val repository = CalendarRepository(contentResolver)
         val settings = Settings(this)

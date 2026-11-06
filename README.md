@@ -111,8 +111,10 @@ upozornění, dovolené), se **samo zálohuje do Google účtu** a po nové inst
 Před odinstalací proto pro jistotu: *Nastavení → Záloha → Uložit do souboru*. Po nové instalaci
 *Načíst ze souboru*. Samotné události jsou v Google Kalendáři, ty se vrátí vždy.
 
-Na stejném telefonu sedí všechno. Na **novém telefonu** Android kalendáře a události očísluje znovu,
-takže nastavení u konkrétních kalendářů a událostí se nemusí spárovat.
+Funguje to i na **novém telefonu**. Android tam kalendáře a události očísluje znovu, aplikace je ale
+pozná podle Google ID (kalendář podle účtu a jeho Google ID, událost podle Google ID události;
+nesynchronizovanou podle názvu a začátku). Dokud se nový telefon s Googlem nesynchronizuje,
+nastavení počká a přiřadí se samo, jakmile události dorazí.
 
 ## Instalace na telefon
 
