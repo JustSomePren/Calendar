@@ -104,6 +104,29 @@ class IcsImportTest {
     }
 
     @Test
+    fun cancelledOccurrenceIsSkippedInSeries() {
+        val text = listOf(
+            "BEGIN:VEVENT", "UID:abc", "SUMMARY:Kurz", "DTSTART;TZID=Europe/Prague:20261102T100000",
+            "DTEND;TZID=Europe/Prague:20261102T110000", "RRULE:FREQ=WEEKLY", "END:VEVENT",
+            "BEGIN:VEVENT", "UID:abc", "RECURRENCE-ID;TZID=Europe/Prague:20261109T100000", "STATUS:CANCELLED",
+            "SUMMARY:Kurz", "DTSTART;TZID=Europe/Prague:20261109T100000", "END:VEVENT",
+        ).joinToString("\r\n")
+
+        val events = parseIcs(text, zone)
+        assertEquals(1, events.size)
+        assertEquals("20261109T090000Z", events.single().draft.excludedDates)
+    }
+
+    @Test
+    fun escapedBackslashBeforeNStaysBackslash() {
+        val text = "BEGIN:VEVENT\r\nSUMMARY:Složka C:\\\\nový\\, starý\r\nDESCRIPTION:a\\nb\r\nDTSTART:20261110T090000\r\nEND:VEVENT"
+        val draft = parseIcs(text, zone).single().draft
+
+        assertEquals("Složka C:\\nový, starý", draft.title)
+        assertEquals("a\nb", draft.description)
+    }
+
+    @Test
     fun ignoresBrokenEvents() {
         assertTrue(parseIcs("BEGIN:VEVENT\r\nSUMMARY:Bez data\r\nEND:VEVENT", zone).isEmpty())
         assertTrue(parseIcs("nesmysl", zone).isEmpty())

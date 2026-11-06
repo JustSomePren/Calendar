@@ -32,8 +32,16 @@ fun parseIcs(text: String, zone: ZoneId = ZoneId.systemDefault()): List<IcsEvent
         }
     }
 
-    return events.mapNotNull { toEvent(it, zone) }
+    // An occurrence deleted in the export comes as a cancelled event pointing at its series
+    val cancelled = events
+        .filter { event -> event.any { it.name == "STATUS" && it.value.equals("CANCELLED", ignoreCase = true) } }
+        .flatMap { event -> event.filter { it.name == "RECURRENCE-ID" }.map { uidOf(event) to it } }
+        .groupBy({ it.first }, { it.second })
+
+    return events.mapNotNull { toEvent(it, cancelled[uidOf(it)].orEmpty(), zone) }
 }
+
+private fun uidOf(event: List<IcsProperty>) = event.firstOrNull { it.name == "UID" }?.value.orEmpty()
 
 private fun parseProperty(line: String): IcsProperty? {
     var quoted = false
@@ -50,8 +58,9 @@ private fun parseProperty(line: String): IcsProperty? {
     return IcsProperty(head.first().uppercase(), params, line.substring(colon + 1))
 }
 
+// One pass from the left, so an escaped backslash before "n" stays a backslash
 private fun unescape(text: String) =
-    text.replace("\\n", "\n").replace("\\N", "\n").replace("\\,", ",").replace("\\;", ";").replace("\\\\", "\\")
+    Regex("""\\(.)""").replace(text) { if (it.groupValues[1] in listOf("n", "N")) "\n" else it.groupValues[1] }
 
 private fun isDate(property: IcsProperty, value: String = property.value.trim()) =
     property.params["VALUE"] == "DATE" || value.length == 8
@@ -76,8 +85,8 @@ private fun parseMillis(property: IcsProperty, zone: ZoneId, value: String = pro
 }
 
 // Skipped occurrences in the provider's EXDATE format
-private fun excludedDates(properties: List<IcsProperty>, zone: ZoneId): String? =
-    properties.filter { it.name == "EXDATE" }
+private fun excludedDates(dates: List<IcsProperty>, zone: ZoneId): String? =
+    dates
         .flatMap { property -> property.value.split(',').map { property to it.trim() } }
         .mapNotNull { (property, value) ->
             val millis = parseMillis(property, zone, value) ?: return@mapNotNull null
@@ -87,7 +96,7 @@ private fun excludedDates(properties: List<IcsProperty>, zone: ZoneId): String? 
         .takeIf { it.isNotEmpty() }
         ?.joinToString(",")
 
-private fun toEvent(properties: List<IcsProperty>, zone: ZoneId): IcsEvent? {
+private fun toEvent(properties: List<IcsProperty>, cancelledOccurrences: List<IcsProperty>, zone: ZoneId): IcsEvent? {
     val byName = properties.associateBy { it.name }
     if (byName["STATUS"]?.value.equals("CANCELLED", ignoreCase = true)) return null
 
@@ -110,7 +119,7 @@ private fun toEvent(properties: List<IcsProperty>, zone: ZoneId): IcsEvent? {
         // All-day ends are exclusive in .ics, drafts keep the last day
         end = if (allDay) maxOf(start, end.minus(Duration.ofDays(1))) else end,
         rule = rule,
-        excludedDates = rule?.let { excludedDates(properties, zone) },
+        excludedDates = rule?.let { excludedDates(properties.filter { it.name == "EXDATE" } + cancelledOccurrences, zone) },
     )
     return IcsEvent(draft, byName["UID"]?.value.orEmpty(), byName["RECURRENCE-ID"]?.let { parseMillis(it, zone) })
 }

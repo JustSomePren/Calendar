@@ -120,6 +120,21 @@ class UserFlowTest {
     }
 
     @Test
+    fun unsavedEditsSurviveRotation() {
+        ActivityScenario.launch<EventEditActivity>(editor()).use { scenario ->
+            waitForText("Nová událost")
+            field("Název").performTextInput("Kadeřník")
+            choose("Normální", "Vysoká")
+            scenario.recreate()
+            waitForText("Kadeřník")
+            compose.onNode(hasClickAction() and hasText("Vysoká")).assertExists()
+            compose.onNodeWithText("Uložit").performClick()
+            waitFor { FakeCalendarProvider.events.isNotEmpty() }
+        }
+        assertEquals("Kadeřník", FakeCalendarProvider.events.single()[Events.TITLE])
+    }
+
+    @Test
     fun allDayEventIsSavedInUtc() {
         ActivityScenario.launch<EventEditActivity>(editor()).use {
             waitForText("Nová událost")

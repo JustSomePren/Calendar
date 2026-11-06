@@ -39,6 +39,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -108,10 +109,11 @@ private fun EventEditScreen(
     var loading by remember { mutableStateOf(true) }
     var calendars by remember { mutableStateOf(emptyList<CalendarInfo>()) }
     var statuses by remember { mutableStateOf(emptyList<Attendee>()) }
-    var original by remember { mutableStateOf<EventDraft?>(null) }
-    var draft by remember { mutableStateOf<EventDraft?>(null) }
-    var showDelete by remember { mutableStateOf(false) }
-    var showSaveChoice by remember { mutableStateOf(false) }
+    // Saved with the screen, so unsaved edits survive rotating the phone
+    var original by rememberSaveable { mutableStateOf<EventDraft?>(null) }
+    var draft by rememberSaveable { mutableStateOf<EventDraft?>(null) }
+    var showDelete by rememberSaveable { mutableStateOf(false) }
+    var showSaveChoice by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         val loaded = withContext(Dispatchers.IO) {
@@ -132,8 +134,11 @@ private fun EventEditScreen(
         }
         calendars = loaded.calendars
         statuses = loaded.attendees
-        original = loaded.draft
-        draft = loaded.draft
+        // After a rotation the restored draft holds the user's edits
+        if (draft == null) {
+            original = loaded.draft
+            draft = loaded.draft
+        }
         loading = false
     }
 
@@ -371,7 +376,7 @@ private fun AttendeesSection(
     editable: Boolean,
     onChange: (List<String>) -> Unit,
 ) {
-    var newEmail by remember { mutableStateOf("") }
+    var newEmail by rememberSaveable { mutableStateOf("") }
 
     SectionTitle("Účastníci")
     emails.forEach { email ->

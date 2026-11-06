@@ -7,6 +7,7 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
 
+// Serializable so an unsaved draft survives rotating the phone
 data class EventDraft(
     val id: Long? = null,
     val calendarId: Long,
@@ -32,7 +33,7 @@ data class EventDraft(
     val instanceDate: LocalDate? = null,
     // Set for an occurrence that was changed on its own
     val originalId: Long? = null,
-) {
+) : java.io.Serializable {
     val isValid: Boolean
         get() = if (allDay) !end.toLocalDate().isBefore(start.toLocalDate()) else !end.isBefore(start)
 
