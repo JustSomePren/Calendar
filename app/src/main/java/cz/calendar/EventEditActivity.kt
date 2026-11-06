@@ -150,6 +150,7 @@ private fun EventEditScreen(
             if (result.isSuccess) {
                 val savedId = saved?.let { it.originalId ?: it.id } ?: result.getOrNull()
                 if (savedId != null && saved != null) {
+                    if (saved.id == null) settings.markCreated(savedId)
                     settings.setPriority(savedId, saved.priority)
                     settings.setWatch(savedId, saved.watch)
                 }
@@ -174,7 +175,8 @@ private fun EventEditScreen(
         val upcoming = event.toUpcoming(calendar?.account.orEmpty())
         val people = event.attendees.map { email -> statuses.find { it.email.equals(email, ignoreCase = true) } ?: Attendee(email, 0) }
         val matches = matchesWorkFilter(upcoming, people, settings.workEmails, settings.workKeywords)
-        autoReminderHint(settings.category(event.calendarId), upcoming.isMine, matches)
+        val mine = upcoming.isMine || settings.isCreated(event.originalId ?: event.id ?: -1)
+        autoReminderHint(settings.category(event.calendarId), mine, matches)
     }.orEmpty()
 
     fun saveSeries(event: EventDraft) {

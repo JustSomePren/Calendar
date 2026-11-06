@@ -36,7 +36,8 @@ object EventNotifier {
         // Multi-day events remind 3 days ahead, so look a bit further
         val planned = repository.upcoming(today.minusDays(1), today.plusDays(5))
             .filter { event ->
-                shouldNotify(settings.category(event.calendarId), settings.watchFor(event.eventId, event.seriesId), event.isMine) {
+                val mine = event.isMine || settings.isCreated(event.seriesId)
+                shouldNotify(settings.category(event.calendarId), settings.watchFor(event.eventId, event.seriesId), mine) {
                     matchesWorkFilter(event, repository.attendees(event.eventId), emails, keywords)
                 }
             }

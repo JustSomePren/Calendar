@@ -36,7 +36,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        openDay.value = intent.dayExtra()
+        // After a rotation the day from the widget was already shown
+        if (savedInstanceState == null) openDay.value = intent.dayExtra()
         BackgroundWork.start(this)
 
         val repository = CalendarRepository(contentResolver)

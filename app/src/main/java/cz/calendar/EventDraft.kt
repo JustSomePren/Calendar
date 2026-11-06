@@ -33,12 +33,18 @@ data class EventDraft(
     val instanceDate: LocalDate? = null,
     // Set for an occurrence that was changed on its own
     val originalId: Long? = null,
+    // Zone a loaded timed event is stored in, null for new events
+    val eventTimeZone: String? = null,
 ) : java.io.Serializable {
     val isValid: Boolean
         get() = if (allDay) !end.toLocalDate().isBefore(start.toLocalDate()) else !end.isBefore(start)
 
+    // A loaded event keeps its own zone, e.g. an invite from New York; new ones use the phone's
+    private val seriesZone: ZoneId
+        get() = if (allDay) ZoneOffset.UTC else eventTimeZone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
+
     val timeZone: String
-        get() = if (allDay) "UTC" else ZoneId.systemDefault().id
+        get() = if (allDay) "UTC" else seriesZone.id
 
     fun startMillis(): Long = toMillis(if (allDay) start.toLocalDate().atStartOfDay() else start)
 
@@ -72,8 +78,11 @@ data class EventDraft(
     // change or when switching all-day on or off
     fun seriesStartMillis(): Long {
         if (rule == null || seriesStartDate == null || instanceDate == null) return startMillis()
-        val day = seriesStartDate.plusDays(ChronoUnit.DAYS.between(instanceDate, start.toLocalDate()))
-        return toMillis(if (allDay) day.atStartOfDay() else day.atTime(start.toLocalTime()))
+        // Work in the series' own zone, the form shows the phone's local time
+        val shown = if (allDay) start else start.atZone(ZoneId.systemDefault()).withZoneSameInstant(seriesZone).toLocalDateTime()
+        val day = seriesStartDate.plusDays(ChronoUnit.DAYS.between(instanceDate, shown.toLocalDate()))
+        val local = if (allDay) day.atStartOfDay() else day.atTime(shown.toLocalTime())
+        return local.atZone(seriesZone).toInstant().toEpochMilli()
     }
 
     companion object {

@@ -79,6 +79,11 @@ class Settings(context: Context) {
         prefs.all.filter { (key, value) -> key.startsWith("priority_") && value == priority.name }
             .keys.map { it.removePrefix("priority_").toLong() }.toSet()
 
+    // Events made in this app are mine even when the calendar becomes their organizer
+    fun markCreated(eventId: Long) = putLongSet("created_events", longSet("created_events") + eventId)
+
+    fun isCreated(eventId: Long): Boolean = eventId in longSet("created_events")
+
     var notifierStarted: Boolean
         get() = prefs.getBoolean("notifier_started", false)
         set(value) = prefs.edit().putBoolean("notifier_started", value).apply()

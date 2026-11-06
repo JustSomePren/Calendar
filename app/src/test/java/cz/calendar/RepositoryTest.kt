@@ -155,6 +155,33 @@ class RepositoryTest {
     }
 
     @Test
+    fun editingSeriesKeepsItsOwnTimeZone() {
+        val previous = java.util.TimeZone.getDefault()
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Europe/Prague"))
+        try {
+            val newYork = ZoneId.of("America/New_York")
+            val start = java.time.LocalDateTime.of(2026, 6, 1, 10, 0).atZone(newYork).toInstant().toEpochMilli()
+            val id = FakeCalendarProvider.addEvent(
+                mapOf(
+                    Events.CALENDAR_ID to 1L, Events.TITLE to "Call", Events.ALL_DAY to 0, Events.RRULE to "FREQ=WEEKLY",
+                    Events.DTSTART to start, Events.DURATION to "P3600S", Events.EVENT_TIMEZONE to "America/New_York",
+                )
+            )
+            val occurrence = java.time.LocalDateTime.of(2026, 11, 9, 10, 0).atZone(newYork).toInstant().toEpochMilli()
+
+            val opened = repository.event(id, occurrence)!!
+            repository.saveEvent(opened.copy(title = "Call s klientem"))
+
+            val row = FakeCalendarProvider.event(id)
+            assertEquals("America/New_York", row[Events.EVENT_TIMEZONE])
+            assertEquals(start, row[Events.DTSTART])
+            assertEquals("Call s klientem", row[Events.TITLE])
+        } finally {
+            java.util.TimeZone.setDefault(previous)
+        }
+    }
+
+    @Test
     fun turningSeriesIntoSingleEventKeepsShownOccurrence() {
         val seriesId = repository.saveEvent(EventDraft.new(1, day).copy(rule = "FREQ=WEEKLY"))
         val occurrence = (FakeCalendarProvider.event(seriesId)[Events.DTSTART] as Long) + 14 * 24 * 3600_000L

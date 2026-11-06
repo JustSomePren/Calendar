@@ -178,11 +178,15 @@ class CalendarRepository(private val resolver: ContentResolver) {
             Events.RRULE,
             Events.ORGANIZER,
             Events.ORIGINAL_ID,
+            Events.EVENT_TIMEZONE,
         )
         val draft = query(ContentUris.withAppendedId(Events.CONTENT_URI, id), projection) { c ->
             val allDay = c.getInt(7) == 1
             val rule = c.getString(8)?.takeIf { it.isNotBlank() }
             val zone = if (allDay) ZoneOffset.UTC else ZoneId.systemDefault()
+            val storedZone = c.getString(11)?.takeIf { !allDay && it.isNotBlank() }
+            // Series dates are counted in the zone the series is kept in
+            val seriesZone = if (allDay) ZoneOffset.UTC else storedZone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: zone
             val seriesStart = c.getLong(4)
             val length = if (c.isNull(5)) parseDuration(c.getString(6)).toMillis() else c.getLong(5) - seriesStart
 
@@ -209,8 +213,9 @@ class CalendarRepository(private val resolver: ContentResolver) {
                 end = finish,
                 rule = rule,
                 instanceBegin = occurrence,
-                seriesStartDate = occurrence?.let { Instant.ofEpochMilli(seriesStart).atZone(zone).toLocalDate() },
-                instanceDate = occurrence?.let { start.toLocalDate() },
+                seriesStartDate = occurrence?.let { Instant.ofEpochMilli(seriesStart).atZone(seriesZone).toLocalDate() },
+                instanceDate = occurrence?.let { Instant.ofEpochMilli(it).atZone(seriesZone).toLocalDate() },
+                eventTimeZone = storedZone,
                 organizer = organizer,
                 originalId = if (c.isNull(10)) null else c.getLong(10),
             ) to organizer

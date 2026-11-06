@@ -117,6 +117,7 @@ class UserFlowTest {
         waitFor { settings.priority(id) == Priority.HIGH }
         assertEquals(Watch.ALWAYS, settings.watch(id))
         assertEquals(1L, settings.lastCalendar)
+        assertTrue(settings.isCreated(id))
     }
 
     @Test
@@ -222,6 +223,20 @@ class UserFlowTest {
             waitFor { FakeCalendarProvider.event(changed)[Events.STATUS] == Events.STATUS_CANCELED }
         }
         assertEquals("FREQ=WEEKLY", FakeCalendarProvider.event(series)[Events.RRULE])
+    }
+
+    @Test
+    fun rotationDoesNotReopenDayFromWidget() {
+        addEvent("Zubař")
+        val intent = Intent(app, MainActivity::class.java).putExtra(EXTRA_DAY, today.plusMonths(3).toString())
+
+        ActivityScenario.launch<MainActivity>(intent).use { scenario ->
+            waitForText("Přidat událost")
+            scenario.recreate()
+            waitForText(monthTitle(java.time.YearMonth.now().plusMonths(3)))
+            compose.waitForIdle()
+            assertTrue(compose.onAllNodesWithText("Přidat událost").fetchSemanticsNodes().isEmpty())
+        }
     }
 
     @Test

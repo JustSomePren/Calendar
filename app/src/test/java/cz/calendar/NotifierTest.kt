@@ -173,6 +173,20 @@ class NotifierTest {
     }
 
     @Test
+    fun myEventInTeamCalendarIsMineAfterProviderSetsOrganizer() {
+        FakeCalendarProvider.addCalendar(5, "Tým", account = "ja@firma.cz", owner = "c_tym@group.calendar.google.com")
+        settings.setCategory(5, Category.WORK)
+        // The real provider and Google make the calendar itself the organizer
+        val mine = soon(5, "Moje porada", organizer = "c_tym@group.calendar.google.com")
+        settings.markCreated(mine)
+        soon(5, "Porada někoho jiného", organizer = "c_tym@group.calendar.google.com")
+
+        EventNotifier.run(app, now)
+
+        assertEquals(listOf("Moje porada"), shownTitles())
+    }
+
+    @Test
     fun muteButtonStopsFurtherReminders() {
         val weekly = soon(1, "Týdenní úklid")
         val mute = Intent(app, ReminderReceiver::class.java)

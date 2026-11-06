@@ -19,7 +19,7 @@ Zobrazuje kalendáře, které už má telefon synchronizované, tedy i všechny 
 V nastavení (ozubené kolo) má každý kalendář kategorii:
 
 - **Osobní** (výchozí): upozorní na všechny události
-- **Pracovní**: upozorní na události, které pořádáš ty, a na ty, kde je mezi účastníky některý z tvých e-mailů (a událost jsi neodmítl), nebo které obsahují zadané slovo (např. `testProjekt`) v názvu, poznámce či místě
+- **Pracovní**: upozorní na události, které pořádáš ty nebo jsi je vytvořil v této aplikaci, a na ty, kde je mezi účastníky některý z tvých e-mailů (a událost jsi neodmítl), nebo které obsahují zadané slovo (např. `testProjekt`) v názvu, poznámce či místě
 - **Tichý**: jen zobrazit, neupozorňovat
 
 U každé události jde v editoru kategorii přebít volbou **Upozornění**:
