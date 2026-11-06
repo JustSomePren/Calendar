@@ -14,8 +14,15 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew testDebugUnitTest assembleDebug
+      - run: ./gradlew lintDebug testDebugUnitTest koverHtmlReportDebug assembleDebug
       - uses: actions/upload-artifact@v4
         with:
           name: kalendar-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: testy-a-pokryti
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/reports/kover/htmlDebug/

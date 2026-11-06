@@ -77,6 +77,20 @@ Pokud nějaký Google kalendář chybí, zapni u něj synchronizaci v aplikaci G
 
 Dlouze podrž prázdné místo na ploše → Widgety → Kalendář → přetáhni na plochu. Velikost jde měnit.
 
+## Testy
+
+Testy běží na počítači bez telefonu (Robolectric simuluje Android i kalendář):
+
+- pravidla upozornění, kategorie a sledování událostí
+- ukládání, úpravy jednoho výskytu, účastníci, import .ics
+- celé postupy klikáním: vytvoření, smazání, nastavení, panel dne, widget, restart telefonu
+
+```
+./gradlew testDebugUnitTest koverHtmlReportDebug
+```
+
+Výsledky a pokrytí kódu jsou v `app/build/reports/`, na GitHubu v Actions → Artifacts → `testy-a-pokryti`.
+
 ## Vlastní sestavení
 
 Otevři složku v Android Studiu a spusť, nebo v terminálu:
