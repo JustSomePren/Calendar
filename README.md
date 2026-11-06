@@ -10,7 +10,15 @@ Zobrazuje kalendáře, které už má telefon synchronizované, tedy i všechny 
 - listování měsíců tažením do stran, tlačítko „Dnes“
 - klepnutí na den ukáže seznam událostí
 - výběr, které kalendáře se zobrazí (☰ vpravo nahoře)
-- přidání a úprava události (zatím přes systémový editor, tedy Google Kalendář)
+- vlastní editor událostí: název, celý den, začátek a konec, kalendář, opakování, upozornění, místo, poznámka
+- mazání události, u opakované jen jednoho výskytu nebo celé série
+- widget na plochu s celým měsícem, klepnutím na den se otevře jeho přehled
+
+Všechny změny se přes telefon synchronizují zpět do Google Kalendáře.
+
+## Widget
+
+Dlouze podrž prázdné místo na ploše → Widgety → Kalendář → přetáhni na plochu. Velikost jde měnit.
 
 ## Instalace na telefon
 
@@ -27,5 +35,5 @@ Pokud nějaký Google kalendář chybí, zapni u něj synchronizaci v aplikaci G
 Otevři složku v Android Studiu a spusť, nebo v terminálu:
 
 ```
-./gradlew assembleDebug
+./gradlew testDebugUnitTest assembleDebug
 ```

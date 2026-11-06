@@ -1,20 +1,19 @@
 package cz.calendar
 
-import android.content.ContentUris
+import android.content.Context
 import android.content.Intent
-import android.provider.CalendarContract
-import android.provider.CalendarContract.Events
 import java.time.LocalDate
-import java.time.ZoneId
 
-fun openEventIntent(event: CalendarEvent): Intent =
-    Intent(Intent.ACTION_VIEW, ContentUris.withAppendedId(Events.CONTENT_URI, event.eventId))
-        .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, event.begin)
-        .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, event.end)
+const val EXTRA_DAY = "day"
+const val EXTRA_EVENT_ID = "event_id"
+const val EXTRA_INSTANCE_BEGIN = "instance_begin"
 
-fun newEventIntent(day: LocalDate): Intent {
-    val begin = day.atTime(9, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-    return Intent(Intent.ACTION_INSERT, Events.CONTENT_URI)
-        .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, begin)
-        .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, begin + 60 * 60 * 1000)
-}
+fun openEventIntent(context: Context, event: CalendarEvent): Intent =
+    Intent(context, EventEditActivity::class.java)
+        .putExtra(EXTRA_EVENT_ID, event.eventId)
+        .putExtra(EXTRA_INSTANCE_BEGIN, event.begin)
+
+fun newEventIntent(context: Context, day: LocalDate): Intent =
+    Intent(context, EventEditActivity::class.java).putExtra(EXTRA_DAY, day.toString())
+
+fun Intent.dayExtra(): LocalDate? = getStringExtra(EXTRA_DAY)?.let(LocalDate::parse)

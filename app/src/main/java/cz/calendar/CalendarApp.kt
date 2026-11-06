@@ -1,6 +1,7 @@
 package cz.calendar
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -26,24 +27,34 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import java.time.LocalDate
+
+private val calendarPermissions = arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
+
+fun Context.hasCalendarAccess(): Boolean =
+    calendarPermissions.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
 
 @Composable
-fun CalendarApp(repository: CalendarRepository, settings: Settings, refreshTick: Int) {
+fun CalendarApp(
+    repository: CalendarRepository,
+    settings: Settings,
+    refreshTick: Int,
+    openDay: LocalDate?,
+    onOpenDayHandled: () -> Unit,
+) {
     val context = LocalContext.current
-    var hasPermission by remember {
-        mutableStateOf(context.checkSelfPermission(Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED)
-    }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        hasPermission = it
+    var hasPermission by remember { mutableStateOf(context.hasCalendarAccess()) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        hasPermission = context.hasCalendarAccess()
     }
 
     LaunchedEffect(Unit) {
-        if (!hasPermission) launcher.launch(Manifest.permission.READ_CALENDAR)
+        if (!hasPermission) launcher.launch(calendarPermissions)
     }
 
     Surface(Modifier.fillMaxSize()) {
         if (hasPermission) {
-            MonthScreen(repository, settings, refreshTick)
+            MonthScreen(repository, settings, refreshTick, openDay, onOpenDayHandled)
         } else {
             Column(
                 Modifier.fillMaxSize().padding(32.dp),
@@ -51,7 +62,7 @@ fun CalendarApp(repository: CalendarRepository, settings: Settings, refreshTick:
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text("Aplikace potřebuje přístup ke kalendářům v telefonu.", textAlign = TextAlign.Center)
-                Button(onClick = { launcher.launch(Manifest.permission.READ_CALENDAR) }) {
+                Button(onClick = { launcher.launch(calendarPermissions) }) {
                     Text("Povolit přístup")
                 }
                 TextButton(onClick = {

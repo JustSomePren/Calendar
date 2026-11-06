@@ -42,7 +42,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -67,26 +66,33 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.temporal.TemporalAdjusters
-import java.util.Locale
+import java.time.temporal.ChronoUnit
 
 private const val START_PAGE = 600
-private val czech = Locale.forLanguageTag("cs")
-private val weekdays = listOf("Po", "Út", "St", "Čt", "Pá", "So", "Ne")
 private val chipStyle = TextStyle(fontSize = 10.sp, lineHeight = 15.sp)
 
 private fun monthForPage(page: Int) = YearMonth.now().plusMonths((page - START_PAGE).toLong())
 
-private fun gridDays(month: YearMonth): List<LocalDate> {
-    val start = month.atDay(1).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-    return List(42) { start.plusDays(it.toLong()) }
-}
+private fun pageForDay(day: LocalDate) = START_PAGE + ChronoUnit.MONTHS.between(YearMonth.now(), YearMonth.from(day)).toInt()
 
-private fun String.capitalized() = replaceFirstChar { it.titlecase(czech) }
+fun eventTextColor(event: CalendarEvent, default: Color): Color {
+    val color = Color(event.color)
+    return when {
+        !(event.allDay || event.multiDay) -> default
+        color.luminance() > 0.5f -> Color.Black
+        else -> Color.White
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick: Int) {
+fun MonthScreen(
+    repository: CalendarRepository,
+    settings: Settings,
+    refreshTick: Int,
+    openDay: LocalDate?,
+    onOpenDayHandled: () -> Unit,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val pagerState = rememberPagerState(initialPage = START_PAGE) { START_PAGE * 2 }
@@ -100,13 +106,17 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
         calendars = withContext(Dispatchers.IO) { repository.calendars() }
     }
 
+    LaunchedEffect(openDay) {
+        openDay ?: return@LaunchedEffect
+        pagerState.scrollToPage(pageForDay(openDay))
+        selectedDay = openDay
+        onOpenDayHandled()
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    val month = monthForPage(pagerState.currentPage)
-                    Text(month.format(DateTimeFormatter.ofPattern("LLLL yyyy", czech)).capitalized())
-                },
+                title = { Text(monthTitle(monthForPage(pagerState.currentPage))) },
                 actions = {
                     TextButton(onClick = { scope.launch { pagerState.animateScrollToPage(START_PAGE) } }) {
                         Text("Dnes")
@@ -118,7 +128,7 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { context.startActivity(newEventIntent(LocalDate.now())) }) {
+            FloatingActionButton(onClick = { context.startActivity(newEventIntent(context, LocalDate.now())) }) {
                 Icon(Icons.Default.Add, contentDescription = "Nová událost")
             }
         },
@@ -128,8 +138,9 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
             HorizontalPager(pagerState, Modifier.weight(1f), beyondViewportPageCount = 1) { page ->
                 val month = monthForPage(page)
                 val days = remember(month) { gridDays(month) }
-                val events by produceState(emptyMap(), month, refreshTick, hidden) {
-                    value = withContext(Dispatchers.IO) { repository.eventsByDay(days.first(), days.last(), hidden) }
+                var events by remember { mutableStateOf(emptyMap<LocalDate, List<CalendarEvent>>()) }
+                LaunchedEffect(month, refreshTick, hidden) {
+                    events = withContext(Dispatchers.IO) { repository.eventsByDay(days.first(), days.last(), hidden) }
                 }
                 MonthGrid(month, days, events, onDayClick = { selectedDay = it })
             }
@@ -195,10 +206,10 @@ private fun MonthGrid(
 @Composable
 private fun DayCell(day: LocalDate, inMonth: Boolean, events: List<CalendarEvent>, modifier: Modifier) {
     BoxWithConstraints(modifier.alpha(if (inMonth) 1f else 0.4f).padding(horizontal = 1.dp)) {
-        val slots = ((maxHeight - 24.dp) / 17.dp).toInt().coerceAtLeast(0)
-        val visible = if (events.size > slots) events.take((slots - 1).coerceAtLeast(0)) else events
+        val slots = ((maxHeight - 24.dp) / 17.dp).toInt()
+        val visible = events.fitInto(slots)
 
-        Column {
+        Column(Modifier.fillMaxWidth()) {
             DayNumber(day)
             visible.forEach { EventChip(it) }
             if (events.size > visible.size) {
@@ -243,11 +254,7 @@ private fun EventChip(event: CalendarEvent) {
             .background(if (filled) color else color.copy(alpha = 0.2f), RoundedCornerShape(3.dp))
             .padding(horizontal = 2.dp),
         style = chipStyle,
-        color = when {
-            !filled -> MaterialTheme.colorScheme.onSurface
-            color.luminance() > 0.5f -> Color.Black
-            else -> Color.White
-        },
+        color = eventTextColor(event, MaterialTheme.colorScheme.onSurface),
         maxLines = 1,
         overflow = TextOverflow.Clip,
     )
@@ -263,8 +270,9 @@ private fun DaySheet(
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
-    val events by produceState(emptyList(), day, refreshTick, hidden) {
-        value = withContext(Dispatchers.IO) { repository.eventsByDay(day, day, hidden)[day].orEmpty() }
+    var events by remember { mutableStateOf(emptyList<CalendarEvent>()) }
+    LaunchedEffect(day, refreshTick, hidden) {
+        events = withContext(Dispatchers.IO) { repository.eventsByDay(day, day, hidden)[day].orEmpty() }
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -280,12 +288,12 @@ private fun DaySheet(
             }
             LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(events) { event ->
-                    EventRow(event, onClick = { context.startActivity(openEventIntent(event)) })
+                    EventRow(event, onClick = { context.startActivity(openEventIntent(context, event)) })
                 }
             }
 
             Spacer(Modifier.height(12.dp))
-            TextButton(onClick = { context.startActivity(newEventIntent(day)) }) {
+            TextButton(onClick = { context.startActivity(newEventIntent(context, day)) }) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text("Přidat událost")
