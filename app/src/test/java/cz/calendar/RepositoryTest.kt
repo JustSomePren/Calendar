@@ -197,6 +197,54 @@ class RepositoryTest {
     }
 
     @Test
+    fun movingSeriesToAnotherDayMovesRuleAndHistory() {
+        val tuesday = java.time.LocalDate.of(2026, 11, 3)
+        val zone = ZoneId.systemDefault()
+        fun at(day: java.time.LocalDate) = day.atTime(10, 0).atZone(zone).toInstant().toEpochMilli()
+        val id = FakeCalendarProvider.addEvent(
+            mapOf(
+                Events.CALENDAR_ID to 1L, Events.TITLE to "Kurz", Events.ALL_DAY to 0, Events.DTSTART to at(tuesday),
+                Events.DURATION to "P3600S", Events.RRULE to "FREQ=WEEKLY;WKST=MO;BYDAY=TU", Events.EVENT_TIMEZONE to zone.id,
+                Events.EXDATE to java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(java.time.ZoneOffset.UTC)
+                    .format(java.time.Instant.ofEpochMilli(at(tuesday.plusDays(14)))),
+            )
+        )
+        repository.deleteOccurrence(id, at(tuesday.plusDays(7)))
+
+        val opened = repository.event(id, at(tuesday.plusDays(21)))!!
+        repository.saveEvent(opened.copy(start = opened.start.plusDays(1), end = opened.end.plusDays(1)))
+
+        val series = FakeCalendarProvider.event(id)
+        assertEquals("FREQ=WEEKLY;WKST=MO;BYDAY=WE", series[Events.RRULE])
+        assertEquals(at(tuesday.plusDays(1)), series[Events.DTSTART])
+        val cancelled = FakeCalendarProvider.events.single { it[Events.ORIGINAL_ID] == id }
+        assertEquals(at(tuesday.plusDays(8)), cancelled[Events.ORIGINAL_INSTANCE_TIME])
+        val skipped = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(java.time.ZoneOffset.UTC)
+            .format(java.time.Instant.ofEpochMilli(at(tuesday.plusDays(15))))
+        assertEquals(skipped, series[Events.EXDATE])
+    }
+
+    @Test
+    fun savingUnchangedTimeInRepeatedDaylightSavingHourKeepsIt() {
+        val previous = java.util.TimeZone.getDefault()
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Europe/Prague"))
+        try {
+            // 02:30 for the second time, after clocks went back
+            val begin = java.time.Instant.parse("2026-10-25T01:30:00Z").toEpochMilli()
+            val id = FakeCalendarProvider.addEvent(
+                mapOf(Events.CALENDAR_ID to 1L, Events.TITLE to "Noční", Events.ALL_DAY to 0, Events.DTSTART to begin, Events.DTEND to begin + 3600_000L),
+            )
+
+            repository.saveEvent(repository.event(id)!!.copy(title = "Noční služba"))
+
+            assertEquals(begin, FakeCalendarProvider.event(id)[Events.DTSTART])
+            assertEquals(begin + 3600_000L, FakeCalendarProvider.event(id)[Events.DTEND])
+        } finally {
+            java.util.TimeZone.setDefault(previous)
+        }
+    }
+
+    @Test
     fun turningSeriesIntoSingleEventKeepsShownOccurrence() {
         val seriesId = repository.saveEvent(EventDraft.new(1, day).copy(rule = "FREQ=WEEKLY"))
         val occurrence = (FakeCalendarProvider.event(seriesId)[Events.DTSTART] as Long) + 14 * 24 * 3600_000L

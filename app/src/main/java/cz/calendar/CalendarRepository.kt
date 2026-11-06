@@ -10,6 +10,7 @@ import android.provider.CalendarContract.Calendars
 import android.provider.CalendarContract.Events
 import android.provider.CalendarContract.Instances
 import androidx.core.content.contentValuesOf
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -215,6 +216,8 @@ class CalendarRepository(private val resolver: ContentResolver) {
                 instanceBegin = occurrence,
                 seriesStartDate = occurrence?.let { Instant.ofEpochMilli(seriesStart).atZone(seriesZone).toLocalDate() },
                 instanceDate = occurrence?.let { Instant.ofEpochMilli(it).atZone(seriesZone).toLocalDate() },
+                loadedBegin = begin.takeIf { !allDay },
+                loadedEnd = end.takeIf { !allDay },
                 eventTimeZone = storedZone,
                 organizer = organizer,
                 originalId = if (c.isNull(10)) null else c.getLong(10),
@@ -228,8 +231,12 @@ class CalendarRepository(private val resolver: ContentResolver) {
 
     // Returns the id of the saved event
     fun saveEvent(draft: EventDraft): Long {
-        val values = eventValues(draft)
-        values.put(Events.DTSTART, draft.seriesStartMillis())
+        // A series moved to other days needs its weekdays moved too
+        val rule = draft.rule?.let { shiftRule(it, draft.seriesDayShift()) ?: error("Rule cannot move") }
+        val values = eventValues(draft.copy(rule = rule))
+        val newStart = draft.seriesStartMillis()
+        values.put(Events.DTSTART, newStart)
+        if (draft.id != null && rule != null) moveSeriesHistory(draft.id, newStart)
         val id = if (draft.id == null) {
             values.put(Events.CALENDAR_ID, draft.calendarId)
             ContentUris.parseId(resolver.insert(Events.CONTENT_URI, values) ?: error("Insert failed"))
@@ -239,6 +246,57 @@ class CalendarRepository(private val resolver: ContentResolver) {
         }
         saveAttendees(id, draft.attendees)
         return id
+    }
+
+    // Skipped and changed occurrences point at the old times of a series, move them along with it
+    private fun moveSeriesHistory(seriesId: Long, newStart: Long) {
+        val (oldStart, zone, excluded) = query(
+            ContentUris.withAppendedId(Events.CONTENT_URI, seriesId),
+            arrayOf(Events.DTSTART, Events.ALL_DAY, Events.EVENT_TIMEZONE, Events.EXDATE),
+        ) { c ->
+            val zone = if (c.getInt(1) == 1) ZoneOffset.UTC else c.getString(2)?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
+            Triple(c.getLong(0), zone, c.getString(3))
+        }.firstOrNull() ?: return
+        if (oldStart == newStart) return
+
+        // By the clock, so a move keeps the same local time across daylight-saving changes
+        val shift = Duration.between(Instant.ofEpochMilli(oldStart).atZone(zone).toLocalDateTime(), Instant.ofEpochMilli(newStart).atZone(zone).toLocalDateTime())
+        fun moved(millis: Long) = Instant.ofEpochMilli(millis).atZone(zone).toLocalDateTime().plus(shift).atZone(zone).toInstant().toEpochMilli()
+
+        query(
+            Events.CONTENT_URI,
+            arrayOf(Events._ID, Events.ORIGINAL_INSTANCE_TIME),
+            "${Events.ORIGINAL_ID} = ?",
+            arrayOf(seriesId.toString()),
+        ) { it.getLong(0) to it.getLong(1) }.forEach { (exceptionId, instance) ->
+            resolver.update(
+                ContentUris.withAppendedId(Events.CONTENT_URI, exceptionId),
+                contentValuesOf(Events.ORIGINAL_INSTANCE_TIME to moved(instance)),
+                null,
+                null,
+            )
+        }
+
+        // EXDATE as written by this app or Google: a list of UTC times or dates
+        if (excluded != null && ';' !in excluded) {
+            val utc = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC)
+            val date = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd").withZone(ZoneOffset.UTC)
+            val shifted = excluded.split(',').map { it.trim() }.joinToString(",") { value ->
+                runCatching {
+                    if (value.length == 8) {
+                        date.format(Instant.ofEpochMilli(moved(LocalDate.parse(value, date).atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli())))
+                    } else {
+                        utc.format(Instant.ofEpochMilli(moved(Instant.from(utc.parse(value)).toEpochMilli())))
+                    }
+                }.getOrDefault(value)
+            }
+            resolver.update(
+                ContentUris.withAppendedId(Events.CONTENT_URI, seriesId),
+                contentValuesOf(Events.EXDATE to shifted),
+                null,
+                null,
+            )
+        }
     }
 
     // Changes just one occurrence of a recurring event, returns the id of the exception

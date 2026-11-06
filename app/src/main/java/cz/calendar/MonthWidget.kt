@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
+import androidx.glance.LocalContext
 import androidx.glance.LocalSize
 import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionParametersOf
@@ -114,7 +115,9 @@ private fun WidgetContent(month: YearMonth, days: List<LocalDate>, events: Map<L
             }
 
             // Title and weekday rows take about 56dp, the rest is split into six weeks
-            val slots = (((LocalSize.current.height - 56.dp) / 6 - 20.dp) / 15.dp).toInt()
+            // Rows grow with the system font size so the text is not cut
+            val scale = LocalContext.current.resources.configuration.fontScale
+            val slots = (((LocalSize.current.height - 56.dp * scale) / 6 - 20.dp * scale) / (15.dp * scale)).toInt()
             days.chunked(7).forEach { week ->
                 val layout = layoutWeek(week, events, slots)
                 Row(GlanceModifier.fillMaxWidth().defaultWeight()) {
@@ -163,7 +166,7 @@ private fun WidgetDay(day: LocalDate, col: Int, inMonth: Boolean, layout: WeekLa
             when {
                 bar != null -> WidgetChip(bar.event, if (col == bar.fromCol) bar.event.label else "", bar.startsHere || col != bar.fromCol, col == bar.toCol)
                 single != null -> WidgetChip(single, single.label, padStart = true, padEnd = true)
-                else -> Spacer(GlanceModifier.height(15.dp))
+                else -> Spacer(GlanceModifier.height(15.dp * LocalContext.current.resources.configuration.fontScale))
             }
         }
         if (layout.hidden[col] > 0) {
@@ -180,7 +183,7 @@ private fun WidgetChip(event: CalendarEvent, text: String, padStart: Boolean, pa
         text,
         GlanceModifier
             .fillMaxWidth()
-            .height(15.dp)
+            .height(15.dp * LocalContext.current.resources.configuration.fontScale)
             .padding(start = if (padStart) 1.dp else 0.dp, end = if (padEnd) 1.dp else 0.dp, top = 1.dp)
             .background(ColorProvider(if (filled) color else color.copy(alpha = 0.25f)))
             .padding(horizontal = 2.dp),

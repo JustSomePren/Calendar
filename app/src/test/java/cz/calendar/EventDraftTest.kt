@@ -50,6 +50,16 @@ class EventDraftTest {
     }
 
     @Test
+    fun weekdaysOfRuleMoveWithSeries() {
+        assertEquals("FREQ=WEEKLY;WKST=MO;BYDAY=WE", shiftRule("FREQ=WEEKLY;WKST=MO;BYDAY=TU", 1))
+        assertEquals("FREQ=WEEKLY;BYDAY=SU,TU", shiftRule("FREQ=WEEKLY;BYDAY=MO,WE", -1))
+        assertEquals("FREQ=WEEKLY", shiftRule("FREQ=WEEKLY", 3))
+        assertEquals("FREQ=MONTHLY;BYMONTHDAY=15", shiftRule("FREQ=MONTHLY;BYMONTHDAY=15", 0))
+        assertEquals(null, shiftRule("FREQ=MONTHLY;BYMONTHDAY=15", 1))
+        assertEquals(null, shiftRule("FREQ=MONTHLY;BYDAY=2TU", 1))
+    }
+
+    @Test
     fun movingOneOccurrenceShiftsTheSeries() {
         val draft = EventDraft.new(1, day).copy(rule = "FREQ=WEEKLY")
         val seriesStart = draft.startMillis() - 7 * 24 * 3600_000L

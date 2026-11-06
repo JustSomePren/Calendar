@@ -67,7 +67,7 @@ class FakeCalendarProvider : ContentProvider() {
             "events" -> when {
                 uri.pathSegments.size > 1 -> events.filter { it[Events._ID] == uri.lastPathSegment!!.toLong() }
                 selection.orEmpty().startsWith(Events.ORIGINAL_ID) -> events.filter {
-                    it[Events.ORIGINAL_ID].toString() == args!![0] && it[Events.ORIGINAL_INSTANCE_TIME].toString() == args[1]
+                    it[Events.ORIGINAL_ID].toString() == args!![0] && (args.size == 1 || it[Events.ORIGINAL_INSTANCE_TIME].toString() == args[1])
                 }
                 args != null -> events.filter {
                     it[Events.CALENDAR_ID].toString() == args[0] && it[Events.TITLE] == args[1] && it[Events.DTSTART].toString() == args[2]

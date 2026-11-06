@@ -180,6 +180,10 @@ private fun EventEditScreen(
     }.orEmpty()
 
     fun saveSeries(event: EventDraft) {
+        if (event.rule != null && shiftRule(event.rule, event.seriesDayShift()) == null) {
+            Toast.makeText(context, "Tahle série se opakuje podle data, celou ji na jiný den přesunout nejde. Přesuň jen tento výskyt.", Toast.LENGTH_LONG).show()
+            return
+        }
         settings.lastCalendar = event.calendarId
         commit(event) { repository.saveEvent(event) }
     }

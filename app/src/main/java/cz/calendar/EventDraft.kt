@@ -1,6 +1,7 @@
 package cz.calendar
 
 import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -35,6 +36,9 @@ data class EventDraft(
     val originalId: Long? = null,
     // Zone a loaded timed event is stored in, null for new events
     val eventTimeZone: String? = null,
+    // Exact moments of a loaded timed event; the same clock time can happen twice when clocks go back
+    val loadedBegin: Long? = null,
+    val loadedEnd: Long? = null,
 ) : java.io.Serializable {
     val isValid: Boolean
         get() = if (allDay) !end.toLocalDate().isBefore(start.toLocalDate()) else !end.isBefore(start)
@@ -46,9 +50,12 @@ data class EventDraft(
     val timeZone: String
         get() = if (allDay) "UTC" else seriesZone.id
 
-    fun startMillis(): Long = toMillis(if (allDay) start.toLocalDate().atStartOfDay() else start)
+    fun startMillis(): Long = unchanged(start, loadedBegin) ?: toMillis(if (allDay) start.toLocalDate().atStartOfDay() else start)
 
-    fun endMillis(): Long = toMillis(if (allDay) end.toLocalDate().plusDays(1).atStartOfDay() else end)
+    fun endMillis(): Long = unchanged(end, loadedEnd) ?: toMillis(if (allDay) end.toLocalDate().plusDays(1).atStartOfDay() else end)
+
+    private fun unchanged(time: LocalDateTime, loaded: Long?): Long? =
+        loaded?.takeIf { !allDay && Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDateTime() == time }
 
     // Recurring events store a duration instead of an end time
     fun durationRule(): String =
@@ -78,12 +85,19 @@ data class EventDraft(
     // change or when switching all-day on or off
     fun seriesStartMillis(): Long {
         if (rule == null || seriesStartDate == null || instanceDate == null) return startMillis()
-        // Work in the series' own zone, the form shows the phone's local time
-        val shown = if (allDay) start else start.atZone(ZoneId.systemDefault()).withZoneSameInstant(seriesZone).toLocalDateTime()
-        val day = seriesStartDate.plusDays(ChronoUnit.DAYS.between(instanceDate, shown.toLocalDate()))
+        val shown = shownInSeriesZone()
+        val day = seriesStartDate.plusDays(seriesDayShift())
         val local = if (allDay) day.atStartOfDay() else day.atTime(shown.toLocalTime())
         return local.atZone(seriesZone).toInstant().toEpochMilli()
     }
+
+    // How many days the opened occurrence was moved, the series moves the same
+    fun seriesDayShift(): Long =
+        if (rule == null || instanceDate == null) 0 else ChronoUnit.DAYS.between(instanceDate, shownInSeriesZone().toLocalDate())
+
+    // Work in the series' own zone, the form shows the phone's local time
+    private fun shownInSeriesZone(): LocalDateTime =
+        if (allDay) start else Instant.ofEpochMilli(startMillis()).atZone(seriesZone).toLocalDateTime()
 
     companion object {
         fun new(calendarId: Long, day: LocalDate): EventDraft {
@@ -103,3 +117,22 @@ val repeatOptions = listOf(
 
 fun repeatChoices(current: String?): List<Pair<String?, String>> =
     if (repeatOptions.any { it.first == current }) repeatOptions else repeatOptions + (current to "Vlastní opakování")
+
+private val weekdayCodes = listOf("MO", "TU", "WE", "TH", "FR", "SA", "SU")
+
+// Moves the weekdays of a rule with the series, e.g. BYDAY=TU by one day becomes BYDAY=WE.
+// Returns null for rules that cannot simply move, like "every 15th" or "second Tuesday".
+fun shiftRule(rule: String, days: Long): String? {
+    if (days == 0L) return rule
+    val parts = rule.split(';')
+    val keys = parts.map { it.substringBefore('=').uppercase() }
+    if (keys.any { it in listOf("BYMONTHDAY", "BYYEARDAY", "BYWEEKNO", "BYSETPOS") }) return null
+
+    val shifted = parts.map { part ->
+        if (!part.uppercase().startsWith("BYDAY=")) return@map part
+        val codes = part.substringAfter('=').split(',').map { weekdayCodes.indexOf(it.trim().uppercase()) }
+        if (codes.any { it < 0 }) return null
+        "BYDAY=" + codes.joinToString(",") { weekdayCodes[Math.floorMod(it + days, 7L).toInt()] }
+    }
+    return shifted.joinToString(";")
+}

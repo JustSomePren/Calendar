@@ -180,7 +180,13 @@ class ScreenshotTour {
     }
 
     @Test
-    fun widget() {
+    fun widget() = widgetShot("10_widget")
+
+    @Test
+    @Config(qualifiers = "w411dp-h914dp-xxhdpi", fontScale = 2.0f)
+    fun widgetLargeFont() = widgetShot("12_widget_large_font")
+
+    private fun widgetShot(name: String) {
         val width = 360
         val height = 420
         val scale = 3f
@@ -198,7 +204,7 @@ class ScreenshotTour {
             drawColor(0xFF607D8B.toInt())
             parent.draw(this)
         }
-        File("build/shots/10_widget.png").apply { parentFile?.mkdirs() }.outputStream().use {
+        File("build/shots/$name.png").apply { parentFile?.mkdirs() }.outputStream().use {
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
         }
     }
