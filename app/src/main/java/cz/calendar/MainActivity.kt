@@ -1,0 +1,60 @@
+package cz.calendar
+
+import android.database.ContentObserver
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.provider.CalendarContract
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.platform.LocalContext
+
+class MainActivity : ComponentActivity() {
+
+    // Bumped whenever calendar data may have changed, screens reload on it
+    private val refreshTick = mutableIntStateOf(0)
+
+    private val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) {
+            refreshTick.intValue++
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+
+        val repository = CalendarRepository(contentResolver)
+        val settings = Settings(this)
+        setContent {
+            CalendarTheme {
+                CalendarApp(repository, settings, refreshTick.intValue)
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        contentResolver.registerContentObserver(CalendarContract.CONTENT_URI, true, observer)
+        refreshTick.intValue++
+    }
+
+    override fun onStop() {
+        contentResolver.unregisterContentObserver(observer)
+        super.onStop()
+    }
+}
+
+@Composable
+fun CalendarTheme(content: @Composable () -> Unit) {
+    val context = LocalContext.current
+    val colors = if (isSystemInDarkTheme()) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    MaterialTheme(colorScheme = colors, content = content)
+}
