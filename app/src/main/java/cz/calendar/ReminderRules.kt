@@ -42,14 +42,19 @@ private val morningEnds = LocalTime.of(9, 0)
  * Recurring events and low priority keep only the closest reminder.
  * High priority adds an earlier one and, for all-day events, a morning one.
  */
-// A night shift 22:00–06:00 is not multi-day, only events lasting whole days are
-val UpcomingEvent.multiDay: Boolean
-    get() = if (allDay) end - begin > 24 * 3600_000L else end - begin >= 24 * 3600_000L
+// A night shift 22:00–06:00 is not multi-day, only events lasting whole days are.
+// Counted on the clock, so a 24 h shift over a daylight-saving night is still a day.
+fun UpcomingEvent.isMultiDay(zone: ZoneId): Boolean {
+    if (allDay) return end - begin > 24 * 3600_000L
+    val start = Instant.ofEpochMilli(begin).atZone(zone).toLocalDateTime()
+    val finish = Instant.ofEpochMilli(end).atZone(zone).toLocalDateTime()
+    return !finish.isBefore(start.plusDays(1))
+}
 
 fun reminderTimes(event: UpcomingEvent, priority: Priority, zone: ZoneId): List<Long> {
     val days = eventDays(event.begin, event.end, if (event.allDay) ZoneOffset.UTC else zone)
     val startDay = days.start
-    val multiDay = event.multiDay
+    val multiDay = event.isMultiDay(zone)
     val startTime = Instant.ofEpochMilli(event.begin).atZone(zone).toLocalTime()
 
     fun at(day: LocalDate, time: LocalTime) = day.atTime(time).atZone(zone).toInstant().toEpochMilli()
@@ -131,7 +136,7 @@ fun whenText(event: UpcomingEvent, now: Long, zone: ZoneId): String {
     val time = Instant.ofEpochMilli(event.begin).atZone(zone).format(timeFormat)
 
     return when {
-        event.multiDay ->
+        event.isMultiDay(zone) ->
             "${dayLabel(days.start, today)} – ${dayLabel(days.endInclusive, today).replaceFirstChar { it.lowercase() }}"
         event.allDay -> "${dayLabel(days.start, today)}, celý den"
         minutesLeft in 0..59 -> "Za $minutesLeft min, v $time"

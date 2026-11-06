@@ -146,6 +146,10 @@ class ScreenshotTour {
     fun monthDark() = shot<MainActivity>("02_month_dark", "Zubař")
 
     @Test
+    @Config(qualifiers = "w411dp-h914dp-xxhdpi", fontScale = 2.0f)
+    fun monthLargeFont() = shot<MainActivity>("11_month_large_font", "Zubař")
+
+    @Test
     fun dayPanel() = shot<MainActivity>(
         "03_day_panel",
         "Porada týmu",

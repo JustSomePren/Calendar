@@ -240,6 +240,23 @@ class UserFlowTest {
     }
 
     @Test
+    @Config(qualifiers = "w411dp-h914dp", fontScale = 2.0f)
+    fun largeFontKeepsDayNumbersAndEventsWhole() {
+        addEvent("Zubař")
+
+        ActivityScenario.launch(MainActivity::class.java).use {
+            waitForText("Zubař")
+            val number = compose.onAllNodesWithText(today.dayOfMonth.toString())
+                .fetchSemanticsNodes().first { it.layoutInfo.isPlaced }
+            val chip = compose.onAllNodesWithText("Zubař").fetchSemanticsNodes().first()
+            // Boxes grow with the font, so the text is not cut in half
+            val density = app.resources.displayMetrics.density
+            assertTrue(number.size.height >= 22 * 2.0f * density * 0.9f)
+            assertTrue(chip.size.height >= 16 * 2.0f * density * 0.9f)
+        }
+    }
+
+    @Test
     fun deleteEvent() {
         val id = addEvent("Zrušená schůzka")
 

@@ -73,6 +73,23 @@ class ReminderRulesTest {
     }
 
     @Test
+    fun dayLongShiftOverDaylightSavingNightIsMultiDay() {
+        val march = UpcomingEvent(
+            eventId = 1, calendarId = 1, title = "Služba 24h",
+            begin = millis(LocalDateTime.of(2027, 3, 27, 7, 0)), end = millis(LocalDateTime.of(2027, 3, 28, 7, 0)),
+        )
+        assertEquals(
+            listOf(LocalDateTime.of(2027, 3, 24, 18, 0), LocalDateTime.of(2027, 3, 26, 18, 0)),
+            times(reminderTimes(march, Priority.NORMAL, zone)),
+        )
+
+        val october = march.copy(
+            begin = millis(LocalDateTime.of(2026, 10, 24, 7, 0)), end = millis(LocalDateTime.of(2026, 10, 25, 6, 30)),
+        )
+        assertFalse(october.isMultiDay(zone))
+    }
+
+    @Test
     fun allDayRemindsTheDayBefore() {
         assertEquals(listOf(day.minusDays(1).atTime(18, 0)), times(reminderTimes(allDay(1), Priority.NORMAL, zone)))
     }

@@ -55,6 +55,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -86,10 +87,11 @@ fun eventTextColor(event: CalendarEvent, default: Color): Color {
 }
 
 // Day number takes the top 24dp, every event row below it 17dp
-private val dayHeader = 24.dp
-private val rowHeight = 17.dp
+// Sizes grow with the system font size, so large text gets taller rows instead of being cut
+private fun dayHeader(scale: Float) = 24.dp * scale
+private fun rowHeight(scale: Float) = 17.dp * scale
 
-private fun rowOffset(row: Int) = dayHeader + rowHeight * row + 1.dp
+private fun rowOffset(row: Int, scale: Float) = dayHeader(scale) + rowHeight(scale) * row + 1.dp
 
 val CalendarEvent.label: String
     get() = if (important) "! $title" else title
@@ -196,9 +198,10 @@ private fun WeekRow(
     onDayClick: (LocalDate) -> Unit,
     modifier: Modifier,
 ) {
+    val scale = LocalDensity.current.fontScale
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val cellWidth = maxWidth / 7
-        val slots = ((maxHeight - dayHeader) / rowHeight).toInt()
+        val slots = ((maxHeight - dayHeader(scale)) / rowHeight(scale)).toInt()
         val layout = remember(week, events, slots) { layoutWeek(week, events, slots) }
 
         Row(Modifier.fillMaxSize()) {
@@ -221,7 +224,7 @@ private fun WeekRow(
                 startsHere = bar.startsHere,
                 endsHere = bar.endsHere,
                 modifier = Modifier
-                    .offset(x = cellWidth * bar.fromCol, y = rowOffset(bar.row))
+                    .offset(x = cellWidth * bar.fromCol, y = rowOffset(bar.row, scale))
                     .width(cellWidth * (bar.toCol - bar.fromCol + 1)),
             )
         }
@@ -237,13 +240,14 @@ private fun DayCell(
     moreRow: Int,
     modifier: Modifier,
 ) {
+    val scale = LocalDensity.current.fontScale
     Box(modifier.alpha(if (inMonth) 1f else 0.4f)) {
         DayNumber(day, Modifier.align(Alignment.TopCenter))
         singles.forEach { (row, event) ->
-            EventChip(event, startsHere = true, endsHere = true, modifier = Modifier.offset(y = rowOffset(row)).fillMaxWidth())
+            EventChip(event, startsHere = true, endsHere = true, modifier = Modifier.offset(y = rowOffset(row, scale)).fillMaxWidth())
         }
         if (hidden > 0) {
-            Text("+$hidden", Modifier.offset(y = rowOffset(moreRow)).padding(start = 3.dp), style = chipStyle)
+            Text("+$hidden", Modifier.offset(y = rowOffset(moreRow, scale)).padding(start = 3.dp), style = chipStyle)
         }
     }
 }
@@ -256,7 +260,7 @@ private fun DayNumber(day: LocalDate, modifier: Modifier) {
         text = day.dayOfMonth.toString(),
         modifier = modifier
             .padding(top = 2.dp)
-            .size(22.dp)
+            .size(22.dp * LocalDensity.current.fontScale)
             .background(if (isToday) colors.primary else Color.Transparent, CircleShape),
         textAlign = TextAlign.Center,
         style = MaterialTheme.typography.labelMedium.copy(lineHeight = 22.sp),
@@ -278,7 +282,7 @@ private fun EventChip(event: CalendarEvent, startsHere: Boolean, endsHere: Boole
     Text(
         text = event.label,
         modifier = modifier
-            .height(16.dp)
+            .height(16.dp * LocalDensity.current.fontScale)
             .padding(start = if (startsHere) 1.dp else 0.dp, end = if (endsHere) 1.dp else 0.dp)
             .background(
                 if (filled) color else color.copy(alpha = 0.2f),
@@ -287,6 +291,8 @@ private fun EventChip(event: CalendarEvent, startsHere: Boolean, endsHere: Boole
             .padding(horizontal = 2.dp),
         style = chipStyle,
         color = eventTextColor(event, MaterialTheme.colorScheme.onSurface),
+        // Cut at the cell edge instead of wrapping, so "! Zubař" does not shrink to "!"
+        softWrap = false,
         maxLines = 1,
         overflow = TextOverflow.Clip,
     )
