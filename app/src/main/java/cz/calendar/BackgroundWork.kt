@@ -5,15 +5,12 @@ import android.provider.CalendarContract
 import androidx.glance.appwidget.updateAll
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
-import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import java.time.Duration
 
-private const val HOURLY = "refresh-hourly"
 private const val WATCH = "refresh-on-change"
 
 // Refreshes the widget and reminders whenever calendar data changes
@@ -30,17 +27,20 @@ class RefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorke
 
 object BackgroundWork {
 
-    fun start(context: Context) {
-        // Hourly refresh also moves the "today" mark after midnight
-        val hourly = PeriodicWorkRequestBuilder<RefreshWorker>(Duration.ofHours(1)).build()
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(HOURLY, ExistingPeriodicWorkPolicy.KEEP, hourly)
+    // No periodic work: reminders and midnight use alarms, data changes use a content trigger
+    fun start(context: Context, refreshWidget: Boolean = false) {
+        // Earlier versions refreshed every hour
+        WorkManager.getInstance(context).cancelUniqueWork("refresh-hourly")
         watch(context, ExistingWorkPolicy.KEEP)
+        if (refreshWidget) refreshNow(context)
     }
 
     fun watch(context: Context, policy: ExistingWorkPolicy) {
         val constraints = Constraints.Builder()
             .addContentUriTrigger(CalendarContract.CONTENT_URI, true)
-            .setTriggerContentUpdateDelay(Duration.ofSeconds(5))
+            // Sync often writes in bursts, so handle them together
+            .setTriggerContentUpdateDelay(Duration.ofSeconds(30))
+            .setTriggerContentMaxDelay(Duration.ofMinutes(2))
             .build()
         val request = OneTimeWorkRequestBuilder<RefreshWorker>()
             .setConstraints(constraints)

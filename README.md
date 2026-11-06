@@ -48,6 +48,14 @@ Aby upozornění nechodila dvakrát, vypni je v aplikaci Google Kalendář (v na
 
 Samsung kalendář se na telefonech jiných značek synchronizovat nedá. Na telefonu Samsung události vyexportuj nebo sdílej jako soubor `.ics`, pošli si ho do telefonu a v nastavení → „Import ze Samsung Kalendáře“ ho vyber. Jde vybrat i víc souborů naráz, události, které už v kalendáři jsou, se přeskočí.
 
+## Data a baterie
+
+- **Mobilní data: žádná.** Aplikace nemá oprávnění k internetu. Synchronizaci s Googlem dělá systém stejně jako bez ní.
+- **Na pozadí nic neběží pravidelně.** Telefon probudí jen budík konkrétního upozornění.
+- O půlnoci se posune „dnes“ ve widgetu, ale až když se telefon probudí sám.
+- Po změně v kalendáři se upozornění a widget přepočítají jednou. Změny ze synchronizace se slučují (30 s až 2 min).
+- Každý přepočet je jedno čtení kalendáře na 7 dní dopředu, trvá zlomek sekundy.
+
 ## Instalace na telefon
 
 1. Na GitHubu otevři **Actions** → poslední běh **Build APK**.

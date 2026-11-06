@@ -63,6 +63,7 @@ object EventNotifier {
             .toSet()
 
         scheduleNext(context, planned.filter { it.at > now }.minOfOrNull { it.at })
+        scheduleMidnight(context, today.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli())
     }
 
     private fun show(context: Context, event: UpcomingEvent, priority: Priority, now: Long, zone: ZoneId) {
@@ -106,24 +107,38 @@ object EventNotifier {
         )
     }
 
+    // Only reminders wake the phone up
     private fun scheduleNext(context: Context, at: Long?) {
         val alarms = context.getSystemService(AlarmManager::class.java)
-        val intent = PendingIntent.getBroadcast(
-            context, 0, Intent(context, ReminderReceiver::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
+        val intent = receiverIntent(context, 0, null)
         when {
             at == null -> alarms.cancel(intent)
             alarms.canScheduleExactAlarms() -> alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, intent)
             else -> alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, intent)
         }
     }
+
+    // Moves the widget's "today" after midnight, waits until the phone wakes up anyway
+    private fun scheduleMidnight(context: Context, at: Long) {
+        context.getSystemService(AlarmManager::class.java).set(AlarmManager.RTC, at, receiverIntent(context, 1, ACTION_NEW_DAY))
+    }
+
+    private fun receiverIntent(context: Context, code: Int, action: String?) = PendingIntent.getBroadcast(
+        context,
+        code,
+        Intent(context, ReminderReceiver::class.java).setAction(action),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
 }
 
-// Fires for the reminder alarm, after a restart and when the clock changes
+private const val ACTION_NEW_DAY = "cz.calendar.NEW_DAY"
+
+// Fires for alarms, after a restart or app update and when the clock changes
 class ReminderReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED) BackgroundWork.start(context)
+        // Anything but a reminder may also change what the widget shows
+        if (intent.action != null) BackgroundWork.start(context, refreshWidget = true)
         val pending = goAsync()
         thread {
             try {

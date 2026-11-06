@@ -7,7 +7,6 @@ import android.provider.CalendarContract.Attendees
 import android.provider.CalendarContract.Events
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -103,7 +102,10 @@ class NotifierTest {
 
         EventNotifier.run(app, now)
 
-        val alarm = Shadows.shadowOf(app.getSystemService(AlarmManager::class.java)).peekNextScheduledAlarm()
-        assertNotNull(alarm)
+        val alarms = Shadows.shadowOf(app.getSystemService(AlarmManager::class.java)).scheduledAlarms
+        // Reminder 30 min before wakes the phone, the midnight refresh does not
+        assertEquals(now + (5 * 60 - 30) * 60_000L, alarms.single { it.getType() == AlarmManager.RTC_WAKEUP }.getTriggerAtMs())
+        val midnight = java.time.LocalDate.now().plusDays(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        assertEquals(midnight, alarms.single { it.getType() == AlarmManager.RTC }.getTriggerAtMs())
     }
 }

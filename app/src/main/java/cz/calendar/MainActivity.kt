@@ -61,7 +61,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         contentResolver.unregisterContentObserver(observer)
-        BackgroundWork.refreshNow(this)
         super.onStop()
     }
 }
