@@ -108,6 +108,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("sync_help_shown", false)
         set(value) = prefs.edit().putBoolean("sync_help_shown", value).apply()
 
+    // Google accounts the user picked for this app; the phone itself does not list its accounts to apps
+    var googleAccounts: Set<String>
+        get() = prefs.getStringSet("google_accounts", emptySet()).orEmpty()
+        set(value) = prefs.edit().putStringSet("google_accounts", value).apply()
+
     // Photos from the Galerie app as the background of the days in the month view
     var showPhotos: Boolean
         get() = prefs.getBoolean("show_photos", true)

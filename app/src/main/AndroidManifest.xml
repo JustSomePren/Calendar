@@ -2,24 +2,28 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.READ_CALENDAR" />
-    <!-- Lists the Google accounts already on the phone in the add-account dialog -->
-    <uses-permission android:name="android.permission.GET_ACCOUNTS" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Turning on calendar sync for an account picked in the menu, granted without asking -->
+    <!-- Reading, switching on and watching calendar sync of the Google accounts; all granted without asking -->
+    <uses-permission android:name="android.permission.READ_SYNC_SETTINGS" />
     <uses-permission android:name="android.permission.WRITE_SYNC_SETTINGS" />
+    <uses-permission android:name="android.permission.READ_SYNC_STATS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission
         android:name="android.permission.SCHEDULE_EXACT_ALARM"
         android:maxSdkVersion="32" />
 
-    <!-- The Galerie app pairs photos with events -->
     <queries>
+        <!-- The Galerie app pairs photos with events -->
         <package android:name="com.justsomepren.gallery" />
-        <!-- Syncs Google calendars to the phone; without it new accounts get nothing -->
+        <!-- Google Calendar syncs Google calendars to the phone; the diagnostics check it is there and on -->
         <package android:name="com.google.android.calendar" />
         <package android:name="com.google.android.syncadapters.calendar" />
+        <!-- Whatever app syncs calendars, so getSyncAdapterTypes lists it -->
+        <intent>
+            <action android:name="android.content.SyncAdapter" />
+        </intent>
     </queries>
 
     <application

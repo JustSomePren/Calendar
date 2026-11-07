@@ -20,10 +20,11 @@ import org.robolectric.shadows.ShadowContentResolver
 @RunWith(AndroidJUnit4::class)
 class AccountSyncTest {
 
+    private val context = ApplicationProvider.getApplicationContext<Context>()
+    private val account = Account("ja@firma.cz", GOOGLE_ACCOUNT)
+
     @Test
     fun accountGetsCalendarSyncOnAndStarted() = runBlocking {
-        val account = Account("ja@firma.cz", GOOGLE_ACCOUNT)
-
         syncAccount(account)
 
         assertEquals(1, ContentResolver.getIsSyncable(account, CalendarContract.AUTHORITY))
@@ -37,7 +38,7 @@ class AccountSyncTest {
             .putExtra(AccountManager.KEY_ACCOUNT_NAME, "ja@firma.cz")
             .putExtra(AccountManager.KEY_ACCOUNT_TYPE, GOOGLE_ACCOUNT)
 
-        assertEquals(Account("ja@firma.cz", GOOGLE_ACCOUNT), pickedAccount(picked))
+        assertEquals(account, pickedAccount(picked))
         assertNull(pickedAccount(null))
         assertNull(pickedAccount(Intent()))
     }
@@ -56,9 +57,37 @@ class AccountSyncTest {
         assertEquals(listOf(GOOGLE_ACCOUNT), intent.getStringArrayExtra(Settings.EXTRA_ACCOUNT_TYPES)?.toList())
     }
 
+    // The phone lists no accounts to apps, so the app remembers the picked ones and reads the calendars
     @Test
-    fun phoneWithoutVisibleGoogleAccountsListsNone() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        assertTrue(googleAccounts(context).isEmpty())
+    fun knownAccountsComeFromPicksAndCalendarsWithoutDoubles() {
+        val calendars = listOf(
+            CalendarInfo(1, "Rodina", "Ja@Gmail.com", 0, writable = true, primary = true, accountType = GOOGLE_ACCOUNT),
+            CalendarInfo(2, "Doma", LOCAL_ACCOUNT, 0, writable = true, primary = false, accountType = CalendarContract.ACCOUNT_TYPE_LOCAL),
+        )
+
+        val known = knownGoogleAccounts(context, calendars, setOf("ja@gmail.com", "ja@firma.cz"))
+
+        assertEquals(listOf("ja@gmail.com", "ja@firma.cz"), known.map { it.name })
+        assertTrue(knownGoogleAccounts(context, emptyList(), emptySet()).isEmpty())
+    }
+
+    @Test
+    fun accountCalendarsMatchWhateverLetterCaseGoogleUses() {
+        val calendars = listOf(
+            CalendarInfo(1, "Rodina", "Ja@Gmail.com", 0, writable = true, primary = true, accountType = GOOGLE_ACCOUNT),
+            CalendarInfo(2, "Práce", "ja@firma.cz", 0, writable = true, primary = false, accountType = GOOGLE_ACCOUNT),
+        )
+
+        assertEquals(listOf(1L), calendarsOf(calendars, Account("ja@gmail.com", GOOGLE_ACCOUNT)).map { it.id })
+        assertTrue(calendarsOf(calendars, Account("ja@gmail.com", "com.other")).isEmpty())
+    }
+
+    // Nothing syncs on the test phone: the wait gives the sync its moment to start and then ends
+    @Test
+    fun waitingForSyncEndsWhenNothingRuns() = runBlocking {
+        val started = System.currentTimeMillis()
+        awaitSync(account, maxMillis = 5_000, startWithinMillis = 600)
+        val took = System.currentTimeMillis() - started
+        assertTrue("took $took ms", took in 500..4_000)
     }
 }

@@ -5,11 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import android.app.Activity
 import android.content.Intent
-import android.Manifest
 import android.accounts.Account
-import android.content.pm.PackageManager
 import android.widget.Toast
-import androidx.core.content.ContextCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -37,6 +34,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -93,7 +91,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.time.DayOfWeek
 import java.time.Instant
@@ -151,11 +148,14 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
     var hidden by remember(refreshTick) { mutableStateOf(settings.hiddenCalendars) }
     var calendars by remember { mutableStateOf(emptyList<CalendarInfo>()) }
     // What keeps Google calendars from the phone; read again whenever the app comes back
-    var syncProblem by remember { mutableStateOf<SyncProblem?>(null) }
+    var syncFacts by remember { mutableStateOf<SyncFacts?>(null) }
+    val syncProblem = syncFacts?.let { syncProblem(it) }
+    suspend fun readFacts(): SyncFacts? =
+        // A check that fails says nothing rather than closing the app
+        withContext(Dispatchers.IO) { runCatching { readSyncFacts(context, calendars, settings.googleAccounts) }.getOrNull() }
     LaunchedEffect(refreshTick, changes) {
         calendars = withContext(Dispatchers.IO) { repository.calendars() }
-        // A check that fails says nothing rather than closing the app
-        syncProblem = withContext(Dispatchers.IO) { runCatching { syncProblem(readSyncFacts(context, calendars)) }.getOrNull() }
+        syncFacts = readFacts()
     }
     val important = remember(refreshTick) { settings.eventsWithPriority(Priority.HIGH) }
     // Read again on every refresh, so "today" moves after midnight
@@ -164,85 +164,57 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
     var newCalendar by remember { mutableStateOf(false) }
     var removing by remember { mutableStateOf<CalendarInfo?>(null) }
     var addingAccount by remember { mutableStateOf(false) }
-    // Google accounts already on the phone, listed in the add-account dialog
-    var deviceAccounts by remember { mutableStateOf<List<Account>>(emptyList()) }
-    val accountsPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        scope.launch { deviceAccounts = withContext(Dispatchers.IO) { googleAccounts(context) } }
-    }
-    fun loadDeviceAccounts() {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.GET_ACCOUNTS) == PackageManager.PERMISSION_GRANTED) {
-            scope.launch { deviceAccounts = withContext(Dispatchers.IO) { googleAccounts(context) } }
-        } else {
-            accountsPermission.launch(Manifest.permission.GET_ACCOUNTS)
+    // The account whose calendars are being synced right now, and why they did not come
+    var syncing by remember { mutableStateOf<Account?>(null) }
+    var accountProblem by remember { mutableStateOf<Pair<Account, SyncProblem>?>(null) }
+
+    fun fix(problem: SyncProblem) {
+        scope.launch {
+            fixSync(context, problem, syncFacts ?: readFacts() ?: return@launch)
+            changes++
         }
     }
-    // The account whose calendars should arrive soon, and what to tell when they do not
-    var waitingFor by remember { mutableStateOf<String?>(null) }
-    var accountNote by remember { mutableStateOf<String?>(null) }
+
+    // Switches the account's calendar sync on, waits for the sync and shows what came of it
     fun onAccountPicked(account: Account) {
         addingAccount = false
+        settings.googleAccounts = settings.googleAccounts + account.name
+        syncing = account
         scope.launch {
             syncAccount(account)
-            when {
-                // The menu says what is missing and has the button for it
-                syncProblem.let { it != null && it != SyncProblem.ACCOUNT_OFF } -> drawerState.open()
-                calendars.any { it.account == account.name && it.synced } -> Toast.makeText(
-                    context, "Účet ${account.name} už je připojený, jeho kalendáře jsou v menu.", Toast.LENGTH_LONG,
-                ).show()
-                else -> {
-                    Toast.makeText(context, "Kalendáře účtu ${account.name} se stahují, za chvíli se objeví.", Toast.LENGTH_LONG).show()
-                    waitingFor = account.name
-                }
+            awaitSync(account)
+            calendars = withContext(Dispatchers.IO) { repository.calendars() }
+            val facts = readFacts()
+            syncFacts = facts
+            syncing = null
+            if (calendarsOf(calendars, account).isNotEmpty()) {
+                Toast.makeText(context, "Kalendáře účtu ${account.name} jsou v menu.", Toast.LENGTH_LONG).show()
+                drawerState.open()
+            } else {
+                // Everything else in order means Google Calendar keeps its data to itself
+                accountProblem = account to (facts?.let { syncProblem(it) } ?: SyncProblem.SHARING_OFF)
             }
             changes++
         }
     }
-    // The system chooser for accounts already on the phone; picking one also makes it visible
-    // to this app (getAccountsByType returns only visible accounts on Android 8+)
     val accountPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        val account = pickedAccount(result.data)
-        if (account != null) onAccountPicked(account)
-        changes++
+        pickedAccount(result.data)?.let { onAccountPicked(it) }
     }
-    // Fallback system add-account screen; it often returns cancelled even when the account
-    // was added, so afterwards every visible Google account gets its calendar sync switched on
-    val newAccount = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        scope.launch {
-            googleAccounts(context).forEach { runCatching { syncAccount(it) } }
-            changes++
-            Toast.makeText(context, "Po přihlášení se kalendáře nového účtu za chvíli stáhnou.", Toast.LENGTH_LONG).show()
-        }
+    // The phone's add-account screen says nothing about the outcome, so the new account is picked afterwards
+    val systemAddAccount = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        accountPicker.launch(chooseAccountIntent())
     }
-    fun launchSystemAddAccount() {
-        val intent = addGoogleAccountIntent()
-        if (canStart(context, intent)) {
-            newAccount.launch(intent)
-        } else {
-            Toast.makeText(
-                context,
-                "Z aplikace nejde otevřít přidání účtu – přidej Google účet v Nastavení telefonu → Hesla a účty.",
-                Toast.LENGTH_LONG,
-            ).show()
-        }
-    }
-    // Adds a new Google account in the app through AccountManager (Google's sign-in screen);
-    // on phones where that cannot start, falls back to the system add-account screen
     fun addNewAccount() {
         addingAccount = false
-        val activity = context as? Activity ?: run { launchSystemAddAccount(); return }
-        addGoogleAccount(context, activity, onResult = { account ->
-            if (account != null) onAccountPicked(account)
-        }, onFallback = { launchSystemAddAccount() })
-    }
-    LaunchedEffect(waitingFor) {
-        val name = waitingFor ?: return@LaunchedEffect
-        delay(60_000)
-        val arrived = withContext(Dispatchers.IO) { repository.calendars().any { it.account == name } }
-        if (!arrived) {
-            accountNote = "Kalendáře účtu $name se ani po minutě nestáhly. V Nastavení telefonu → Hesla a účty → $name → " +
-                "Synchronizace účtu zkontroluj, že je zapnutý Kalendář."
+        val activity = context as? Activity
+        val shown = activity != null && addGoogleAccount(activity) { account -> account?.let { onAccountPicked(it) } }
+        if (shown) return
+        val intent = addGoogleAccountIntent()
+        if (canStart(context, intent)) {
+            systemAddAccount.launch(intent)
+        } else {
+            Toast.makeText(context, "Přidej Google účet v Nastavení telefonu → Hesla a účty, pak ho tady vyber.", Toast.LENGTH_LONG).show()
         }
-        waitingFor = null
     }
 
     fun closeDrawer() = scope.launch { drawerState.close() }
@@ -262,10 +234,7 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
         drawerContent = {
             CalendarDrawer(
                 syncProblem = syncProblem,
-                onFixSync = { problem ->
-                    fixSync(context, problem)
-                    changes++
-                },
+                onFixSync = ::fix,
                 calendars = calendars,
                 hidden = hidden,
                 onToggle = { calendar ->
@@ -285,7 +254,6 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
                 onRemove = { removing = it },
                 onAddAccount = {
                     closeDrawer()
-                    loadDeviceAccounts()
                     addingAccount = true
                 },
                 onNewCalendar = {
@@ -360,28 +328,52 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
     if (addingAccount) {
         AlertDialog(
             onDismissRequest = { addingAccount = false },
-            title = { Text("Přidat účet") },
+            title = { Text("Přidat účet Google") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Účet, který už je v telefonu: stačí ho vybrat, synchronizace kalendáře se zapne sama.")
-                    deviceAccounts.forEach { account ->
-                        TextButton(onClick = { onAccountPicked(account) }, Modifier.fillMaxWidth()) { Text(account.name) }
-                    }
-                    if (deviceAccounts.isEmpty()) {
-                        Text("Tlačítkem níž ho vybereš v seznamu telefonu, nebo přidej úplně nový účet.")
-                    }
-                }
+                Text(
+                    "Google kalendáře chodí do telefonu přes Google účet v jeho nastavení. Vyber účet, který už v telefonu je, " +
+                        "aplikace u něj zapne synchronizaci Kalendáře a stáhne ho. Nebo se přihlas k dalšímu účtu.",
+                )
             },
             confirmButton = {
                 Column(horizontalAlignment = Alignment.End) {
                     TextButton(onClick = {
                         addingAccount = false
                         accountPicker.launch(chooseAccountIntent())
-                    }) { Text("Vybrat účet v telefonu") }
-                    TextButton(onClick = { addNewAccount() }) { Text("Nový Google účet") }
+                    }) { Text("Účet, který už je v telefonu") }
+                    TextButton(onClick = { addNewAccount() }) { Text("Přihlásit další účet") }
                     TextButton(onClick = { addingAccount = false }) { Text("Zrušit") }
                 }
             },
+        )
+    }
+
+    syncing?.let { account ->
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Stahují se kalendáře") },
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    CircularProgressIndicator()
+                    Text("Účet ${account.name} se synchronizuje, chvíli to trvá.")
+                }
+            },
+            confirmButton = { TextButton(onClick = { syncing = null }) { Text("Na pozadí") } },
+        )
+    }
+
+    accountProblem?.let { (account, problem) ->
+        AlertDialog(
+            onDismissRequest = { accountProblem = null },
+            title = { Text("Kalendáře účtu ${account.name} nedorazily") },
+            text = { Text(problem.text) },
+            confirmButton = {
+                TextButton(onClick = {
+                    accountProblem = null
+                    fix(problem)
+                }) { Text(problem.button) }
+            },
+            dismissButton = { TextButton(onClick = { accountProblem = null }) { Text("Zavřít") } },
         )
     }
 
@@ -408,14 +400,6 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
                 }) { Text(if (calendar.local) "Smazat" else "Přestat") }
             },
             dismissButton = { TextButton(onClick = { removing = null }) { Text("Zrušit") } },
-        )
-    }
-
-    accountNote?.let { note ->
-        AlertDialog(
-            onDismissRequest = { accountNote = null },
-            text = { Text(note) },
-            confirmButton = { TextButton(onClick = { accountNote = null }) { Text("OK") } },
         )
     }
 

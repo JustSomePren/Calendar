@@ -11,7 +11,7 @@ Zobrazuje kalendáře, které už má telefon synchronizované, tedy i všechny 
 - levé menu (☰): připojené účty a všechny jejich kalendáře se zaškrtnutím, co vidíš; kalendář, který telefon zatím nesynchronizuje (např. pracovní přidaný v Google Kalendáři na webu), se zaškrtnutím začne synchronizovat
 - „Nový kalendář v telefonu“: kalendář bez účtu, zůstává jen v telefonu (nezálohuje se)
 - klepnutím na den detail se všemi jeho událostmi, seřazenými: osobní, pracovní, které se tě týkají, ostatní pracovní, zbytek; tažením do stran další dny
-- „Přidat účet“ nabídne účty Google, které už v telefonu jsou (bez nového přihlašování), aplikace u vybraného zapne a spustí synchronizaci kalendáře; jde přidat i úplně nový účet
+- „Přidat účet“: vybereš Google účet, který už v telefonu je (bez nového přihlašování), aplikace u něj zapne synchronizaci Kalendáře, počká na ni a když kalendáře nedorazí, řekne proč a co zmáčknout; jde se přihlásit i k dalšímu účtu
 - přidržení dne a tažení přes další dny založí celodenní událost přes vybrané dny (samotné přidržení založí událost na ten den)
 - vlastní editor: název, celý den, začátek a konec, kalendář, opakování, priorita, místo, poznámka, účastníci
 - u opakované události změna nebo smazání jen jednoho výskytu, nebo celé série
@@ -135,7 +135,29 @@ nastavení počká a přiřadí se samo, jakmile události dorazí.
 
 Odkaz vede vždy na nejnovější verzi, aktualizace je stejná: stáhnout a nainstalovat přes starou.
 
-Pokud nějaký Google kalendář chybí, zapni u něj synchronizaci v aplikaci Google Kalendář → Nastavení → tvůj účet.
+## Když Google kalendáře nechodí
+
+Google kalendáře se do telefonu dostávají řetězem: Google účet v nastavení telefonu → zapnutá synchronizace
+Kalendáře u účtu → aplikace Google Kalendář je stáhne do úložiště kalendářů v telefonu → odtud je čte tato
+aplikace (a každá jiná s přístupem ke kalendářům). Aplikace se nikam nepřihlašuje, jen hlídá, že řetěz drží.
+
+Když něco chybí, v levém menu se ukáže červená karta s důvodem a tlačítkem, které ho rovnou řeší:
+
+| Důvod | Co se stane po klepnutí |
+| --- | --- |
+| Google Kalendář není v telefonu / je vypnutý | otevře se obchod, resp. detail aplikace |
+| vypnutá synchronizační část Google Kalendáře (Google Calendar Sync) | otevře se její detail, kde se zapne |
+| vypnutá automatická synchronizace účtů | zapne se |
+| účet nemá zapnutou synchronizaci Kalendáře | zapne se a spustí |
+| vše zapnuté, kalendáře přesto nechodí | otevře se Google Kalendář |
+
+Poslední řádek je od roku 2025 nejčastější: Google Kalendář má v **☰ → Nastavení → Obecné** volbu
+**„Sdílet data z Kalendáře Google s dalšími aplikacemi“**. Dokud je vypnutá, žádná jiná aplikace v telefonu
+Google kalendáře nevidí, i když synchronizace účtu běží. Po zapnutí se kalendáře objeví samy.
+
+V Nastavení → Google kalendáře → **Diagnostika synchronizace** je celý stav vypsaný a jde zkopírovat.
+
+Pokud chybí jen jeden kalendář účtu (třeba sdílený), zaškrtni ho v levém menu – telefon ho začne synchronizovat.
 
 ## Widget
 

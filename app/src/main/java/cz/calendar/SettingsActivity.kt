@@ -1,6 +1,8 @@
 package cz.calendar
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings as SystemSettings
@@ -27,7 +29,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -112,6 +117,7 @@ private fun SettingsScreen(repository: CalendarRepository, settings: Settings, o
             ImportSection(calendars.filter { it.writable }, repository, settings)
             PhotosSection(settings)
             BackupSection(settings)
+            SyncDiagnosticsSection(repository, settings)
         }
     }
 }
@@ -305,6 +311,41 @@ private fun BackupSection(settings: Settings) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(onClick = { save.launch("kalendar-zaloha.json") }) { Text("Uložit do souboru") }
         OutlinedButton(onClick = { load.launch(arrayOf("application/json", "*/*")) }) { Text("Načíst ze souboru") }
+    }
+}
+
+// What the phone says about Google calendar sync, to read or send when they do not come
+@Composable
+private fun SyncDiagnosticsSection(repository: CalendarRepository, settings: Settings) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var report by remember { mutableStateOf<String?>(null) }
+
+    SectionTitle("Google kalendáře")
+    Hint("Když některý Google kalendář chybí, diagnostika ukáže, co tomu v telefonu brání.")
+    OutlinedButton(onClick = {
+        scope.launch {
+            report = withContext(Dispatchers.IO) {
+                val calendars = repository.calendars()
+                runCatching { describeSync(readSyncFacts(context, calendars, settings.googleAccounts), calendars) }
+                    .getOrElse { "Diagnostiku se nepodařilo přečíst: $it" }
+            }
+        }
+    }) { Text("Diagnostika synchronizace") }
+
+    report?.let { text ->
+        AlertDialog(
+            onDismissRequest = { report = null },
+            title = { Text("Diagnostika synchronizace") },
+            text = { Text(text, Modifier.verticalScroll(rememberScrollState()), style = MaterialTheme.typography.bodySmall) },
+            confirmButton = {
+                TextButton(onClick = {
+                    context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Diagnostika", text))
+                    Toast.makeText(context, "Zkopírováno", Toast.LENGTH_SHORT).show()
+                }) { Text("Kopírovat") }
+            },
+            dismissButton = { TextButton(onClick = { report = null }) { Text("Zavřít") } },
+        )
     }
 }
 
