@@ -137,6 +137,22 @@ class UserFlowTest {
     }
 
     @Test
+    fun doubleTapOnSaveWritesOnce() {
+        ActivityScenario.launch<EventEditActivity>(editor()).use {
+            waitForText("Nová událost")
+            field("Název").performTextInput("Kadeřník")
+            val save = compose.onNodeWithText("Uložit")
+            compose.runOnUiThread {
+                save.performSemanticsAction(SemanticsActions.OnClick)
+                save.performSemanticsAction(SemanticsActions.OnClick)
+            }
+            waitFor { FakeCalendarProvider.events.isNotEmpty() }
+            compose.waitForIdle()
+        }
+        assertEquals(1, FakeCalendarProvider.events.size)
+    }
+
+    @Test
     fun allDayEventIsSavedInUtc() {
         ActivityScenario.launch<EventEditActivity>(editor()).use {
             waitForText("Nová událost")

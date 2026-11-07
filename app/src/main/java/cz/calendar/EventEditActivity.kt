@@ -119,6 +119,8 @@ private fun EventEditScreen(
     var draft by rememberSaveable { mutableStateOf<EventDraft?>(null) }
     var showDelete by rememberSaveable { mutableStateOf(false) }
     var showSaveChoice by rememberSaveable { mutableStateOf(false) }
+    // A second tap while saving would write the event twice
+    var saving by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         val loaded = withContext(Dispatchers.IO) {
@@ -150,6 +152,8 @@ private fun EventEditScreen(
     // Runs a change on the calendar provider, then closes the editor
     // Reminder choices stay with the opened event, for an occurrence that is its series
     fun commit(saved: EventDraft? = null, action: () -> Long?) {
+        if (saving) return
+        saving = true
         scope.launch {
             val result = withContext(Dispatchers.IO) { runCatching(action) }
             if (result.isSuccess) {
@@ -162,6 +166,7 @@ private fun EventEditScreen(
                 BackgroundWork.refreshNow(context)
                 onClose()
             } else {
+                saving = false
                 Toast.makeText(context, "Změnu se nepodařilo uložit", Toast.LENGTH_LONG).show()
             }
         }
@@ -208,7 +213,7 @@ private fun EventEditScreen(
                     }
                     if (current != null) {
                         TextButton(
-                            enabled = current.isValid,
+                            enabled = current.isValid && !saving,
                             onClick = {
                                 when {
                                     // Only reminder choices changed, nothing to write to the calendar
