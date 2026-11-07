@@ -38,7 +38,6 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         // After a rotation the day from the widget was already shown
         if (savedInstanceState == null) openDay.value = intent.dayExtra()
-        BackgroundWork.start(this)
 
         val repository = CalendarRepository(contentResolver)
         val settings = Settings(this)
@@ -54,15 +53,18 @@ class MainActivity : ComponentActivity() {
         openDay.value = intent.dayExtra()
     }
 
-    override fun onStart() {
-        super.onStart()
-        contentResolver.registerContentObserver(CalendarContract.CONTENT_URI, true, observer)
+    // Resumed also after the permission dialog, so access granted there is picked up at once.
+    // Watching the calendar without access would crash, so wait for it.
+    override fun onResume() {
+        super.onResume()
+        if (hasCalendarAccess()) contentResolver.registerContentObserver(CalendarContract.CONTENT_URI, true, observer)
+        BackgroundWork.start(this)
         refreshTick.intValue++
     }
 
-    override fun onStop() {
+    override fun onPause() {
         contentResolver.unregisterContentObserver(observer)
-        super.onStop()
+        super.onPause()
     }
 }
 

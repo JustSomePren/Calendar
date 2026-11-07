@@ -41,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,6 +59,10 @@ class SettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (!hasCalendarAccess()) {
+            finish()
+            return
+        }
         setContent {
             CalendarTheme {
                 SettingsScreen(CalendarRepository(contentResolver), Settings(this), onClose = ::finish)
@@ -208,20 +213,27 @@ private fun NotificationsSection() {
     }) { Text("Upozornění této aplikace") }
 }
 
+private fun defaultImportCalendar(calendars: List<CalendarInfo>, settings: Settings): Long? =
+    (calendars.find { it.id == settings.lastCalendar } ?: calendars.find { it.primary } ?: calendars.firstOrNull())?.id
+
 @Composable
 private fun ImportSection(calendars: List<CalendarInfo>, repository: CalendarRepository, settings: Settings) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var target by remember(calendars) {
-        mutableStateOf(calendars.find { it.id == settings.lastCalendar }?.id ?: calendars.find { it.primary }?.id ?: calendars.firstOrNull()?.id)
+    // Saved with the screen, the file picker result may come back to a recreated one
+    var target by rememberSaveable { mutableStateOf<Long?>(null) }
+    LaunchedEffect(calendars) {
+        if (target == null) target = defaultImportCalendar(calendars, settings)
     }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        val calendarId = target ?: return@rememberLauncherForActivityResult
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        val chosen = target
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
+                    val calendarId = chosen ?: defaultImportCalendar(repository.calendars().filter { it.writable }, settings)
+                        ?: error("No calendar to import into")
                     val events = uris.flatMap { uri ->
                         context.contentResolver.openInputStream(uri)?.use { parseIcs(it.reader().readText()) }.orEmpty()
                     }
@@ -239,7 +251,7 @@ private fun ImportSection(calendars: List<CalendarInfo>, repository: CalendarRep
     SectionTitle("Import ze Samsung Kalendáře")
     Hint(
         "Samsung kalendář se na Pixelu synchronizovat nedá. Na telefonu Samsung události vyexportuj nebo sdílej " +
-            "jako soubor .ics (postup se liší podle verze One UI), pošli si ho do tohoto telefonu a vyber ho tady. " +
+            "jako soubor .ics nebo .vcs (postup se liší podle verze One UI), pošli si ho do tohoto telefonu a vyber ho tady. " +
             "Události, které už v kalendáři jsou, se přeskočí.",
     )
     if (calendars.isEmpty()) {

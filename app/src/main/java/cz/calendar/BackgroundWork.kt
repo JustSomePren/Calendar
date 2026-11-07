@@ -29,6 +29,8 @@ object BackgroundWork {
 
     // No periodic work: reminders and midnight use alarms, data changes use a content trigger
     fun start(context: Context, refreshWidget: Boolean = false) {
+        // Watching the calendar needs access to it
+        if (!context.hasCalendarAccess()) return
         // Earlier versions refreshed every hour
         WorkManager.getInstance(context).cancelUniqueWork("refresh-hourly")
         watch(context, ExistingWorkPolicy.KEEP)

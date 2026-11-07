@@ -62,6 +62,11 @@ class EventEditActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // Access may have been taken away while the app was in the background
+        if (!hasCalendarAccess()) {
+            finish()
+            return
+        }
         val eventId = intent.getLongExtra(EXTRA_EVENT_ID, -1).takeIf { it >= 0 }
         val instanceBegin = intent.getLongExtra(EXTRA_INSTANCE_BEGIN, -1).takeIf { it >= 0 }
         val day = intent.dayExtra() ?: LocalDate.now()

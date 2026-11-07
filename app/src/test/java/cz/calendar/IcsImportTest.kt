@@ -127,6 +127,21 @@ class IcsImportTest {
     }
 
     @Test
+    fun readsSamsungVcsWithCzechCharacters() {
+        val text = listOf(
+            "BEGIN:VCALENDAR", "VERSION:1.0", "PRODID:vCal ID default", "BEGIN:VEVENT",
+            "SUMMARY;CHARSET=UTF-8;ENCODING=QUOTED-PRINTABLE:=C5=A0kola v p=C5=99=C3=ADrod=C4=9B",
+            "LOCATION;CHARSET=UTF-8;ENCODING=QUOTED-PRINTABLE:Br=C3=A1na a dlouh=C3=A1 ulice =",
+            "Praha",
+            "DTSTART:20261110T090000", "DTEND:20261110T100000", "END:VEVENT", "END:VCALENDAR",
+        ).joinToString("\r\n")
+
+        val draft = parseIcs(text, zone).single().draft
+        assertEquals("Škola v přírodě", draft.title)
+        assertEquals("Brána a dlouhá ulice Praha", draft.location)
+    }
+
+    @Test
     fun ignoresBrokenEvents() {
         assertTrue(parseIcs("BEGIN:VEVENT\r\nSUMMARY:Bez data\r\nEND:VEVENT", zone).isEmpty())
         assertTrue(parseIcs("nesmysl", zone).isEmpty())

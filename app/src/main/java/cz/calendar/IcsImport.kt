@@ -22,7 +22,7 @@ fun parseIcs(text: String, zone: ZoneId = ZoneId.systemDefault()): List<IcsEvent
     val events = mutableListOf<List<IcsProperty>>()
     var current: MutableList<IcsProperty>? = null
     var nested = 0
-    for (line in lines) {
+    for (line in joinQuotedPrintable(lines)) {
         when {
             line == "BEGIN:VEVENT" -> current = mutableListOf()
             line == "END:VEVENT" -> current?.let { events += it }.also { current = null }
@@ -55,7 +55,38 @@ private fun parseProperty(line: String): IcsProperty? {
     val params = head.drop(1).mapNotNull { param ->
         param.split('=', limit = 2).takeIf { it.size == 2 }?.let { (key, value) -> key.uppercase() to value.trim('"') }
     }.toMap()
-    return IcsProperty(head.first().uppercase(), params, line.substring(colon + 1))
+    val raw = line.substring(colon + 1)
+    val value = if (params["ENCODING"].equals("QUOTED-PRINTABLE", ignoreCase = true)) decodeQuotedPrintable(raw, params["CHARSET"]) else raw
+    return IcsProperty(head.first().uppercase(), params, value)
+}
+
+// vCalendar 1.0 (Samsung's .vcs) continues a quoted-printable line with "=" at its end
+private fun joinQuotedPrintable(lines: List<String>): List<String> {
+    val joined = mutableListOf<String>()
+    var open = false
+    for (line in lines) {
+        if (open) joined[joined.lastIndex] = joined.last().dropLast(1) + line else joined += line
+        open = joined.last().endsWith("=") && joined.last().contains("QUOTED-PRINTABLE", ignoreCase = true)
+    }
+    return joined
+}
+
+// =C5=A0kola -> Škola
+private fun decodeQuotedPrintable(text: String, charset: String?): String {
+    val bytes = java.io.ByteArrayOutputStream()
+    var i = 0
+    while (i < text.length) {
+        val hex = text.substring(i + 1, minOf(i + 3, text.length))
+        if (text[i] == '=' && hex.length == 2 && hex.all { it.isLetterOrDigit() } && hex.toIntOrNull(16) != null) {
+            bytes.write(hex.toInt(16))
+            i += 3
+        } else {
+            bytes.write(text[i].toString().toByteArray(Charsets.UTF_8))
+            i++
+        }
+    }
+    val encoding = charset?.let { runCatching { charset(it) }.getOrNull() } ?: Charsets.UTF_8
+    return bytes.toString(encoding.name())
 }
 
 // One pass from the left, so an escaped backslash before "n" stays a backslash

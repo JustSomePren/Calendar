@@ -54,7 +54,7 @@ fun CalendarApp(
     var hasPermission by remember { mutableStateOf(context.hasCalendarAccess()) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         hasPermission = context.hasCalendarAccess()
-        BackgroundWork.refreshNow(context)
+        BackgroundWork.start(context, refreshWidget = true)
     }
 
     LaunchedEffect(Unit) {

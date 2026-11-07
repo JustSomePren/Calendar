@@ -395,12 +395,55 @@ class UserFlowTest {
 
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             waitForText("Aplikace potřebuje přístup ke kalendářům v telefonu.")
+            // On a phone watching the calendar without access throws, Robolectric only lets us check it did not try
+            val observers = Shadows.shadowOf(app.contentResolver).getContentObservers(android.provider.CalendarContract.CONTENT_URI)
+            assertTrue(observers.isEmpty())
             compose.onNodeWithText("Otevřít nastavení aplikace").performClick()
             scenario.onActivity { activity ->
                 val started = Shadows.shadowOf(activity).nextStartedActivity
                 assertEquals(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, started.action)
             }
         }
+    }
+
+    @Test
+    fun withAccessAppWatchesCalendar() {
+        ActivityScenario.launch(MainActivity::class.java).use {
+            waitForText(monthTitle(java.time.YearMonth.now()))
+            val observers = Shadows.shadowOf(app.contentResolver).getContentObservers(android.provider.CalendarContract.CONTENT_URI)
+            assertTrue(observers.isNotEmpty())
+        }
+    }
+
+    @Test
+    fun editorClosesWithoutAccess() {
+        Shadows.shadowOf(app).denyPermissions(android.Manifest.permission.READ_CALENDAR)
+
+        val scenario = ActivityScenario.launch<EventEditActivity>(editor())
+        assertEquals(androidx.lifecycle.Lifecycle.State.DESTROYED, scenario.state)
+    }
+
+    @Test
+    fun importGoesToChosenCalendarAfterRecreation() {
+        val file = java.io.File(app.cacheDir, "porada.ics").apply {
+            writeText("BEGIN:VEVENT\r\nSUMMARY:Porada\r\nDTSTART:${today.toString().replace("-", "")}T100000\r\nEND:VEVENT")
+        }
+
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            waitForText("Importovat do")
+            compose.onNode(hasClickAction() and hasText("Rodina")).performScrollTo().performClick()
+            compose.onNode(hasClickAction() and hasText("Práce")).performClick()
+            compose.onNodeWithText("Vybrat soubory .ics").performScrollTo().performClick()
+            var requestCode = 0
+            scenario.onActivity { requestCode = Shadows.shadowOf(it).nextStartedActivityForResult.requestCode }
+
+            scenario.recreate()
+            scenario.onActivity {
+                it.activityResultRegistry.dispatchResult(requestCode, android.app.Activity.RESULT_OK, Intent().setData(android.net.Uri.fromFile(file)))
+            }
+            waitFor { FakeCalendarProvider.events.isNotEmpty() }
+        }
+        assertEquals(2L, FakeCalendarProvider.events.single()[Events.CALENDAR_ID])
     }
 
     @Test
