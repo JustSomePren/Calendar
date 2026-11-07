@@ -33,8 +33,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Column
 
-private const val GOOGLE_ACCOUNT = "com.google"
-
 // Left menu: calendars of each account to show or hide, adding accounts, settings
 @Composable
 fun CalendarDrawer(
@@ -42,6 +40,7 @@ fun CalendarDrawer(
     hidden: Set<Long>,
     onToggle: (Long) -> Unit,
     onOpen: (Intent) -> Unit,
+    onAddAccount: () -> Unit,
 ) {
     val context = LocalContext.current
     ModalDrawerSheet {
@@ -87,9 +86,7 @@ fun CalendarDrawer(
                 label = { Text("Přidat účet") },
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
                 selected = false,
-                onClick = {
-                    onOpen(Intent(SystemSettings.ACTION_ADD_ACCOUNT).putExtra(SystemSettings.EXTRA_ACCOUNT_TYPES, arrayOf(GOOGLE_ACCOUNT)))
-                },
+                onClick = onAddAccount,
                 modifier = Modifier.padding(horizontal = 12.dp),
             )
             // Calendars of an account appear only when calendar sync is on for it

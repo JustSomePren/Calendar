@@ -3,6 +3,9 @@ package cz.calendar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import android.content.Intent
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
@@ -130,6 +133,10 @@ fun MonthScreen(
         calendars = withContext(Dispatchers.IO) { repository.calendars() }
     }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val accountPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val account = syncPickedAccount(result.data) ?: return@rememberLauncherForActivityResult
+        Toast.makeText(context, "Kalendáře účtu ${account.name} se synchronizují, za chvíli se objeví.", Toast.LENGTH_LONG).show()
+    }
     val important = remember(refreshTick) { settings.eventsWithPriority(Priority.HIGH) }
     // Read again on every refresh, so "today" moves after midnight
     val today = remember(refreshTick) { LocalDate.now() }
@@ -157,6 +164,10 @@ fun MonthScreen(
                 onOpen = { intent ->
                     scope.launch { drawerState.close() }
                     context.startActivity(intent)
+                },
+                onAddAccount = {
+                    scope.launch { drawerState.close() }
+                    accountPicker.launch(chooseAccountIntent())
                 },
             )
         },
