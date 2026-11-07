@@ -4,33 +4,35 @@ import android.accounts.Account
 import android.accounts.AccountManager
 import android.content.ContentResolver
 import android.content.Context
-import android.content.pm.ApplicationInfo
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.os.Bundle
 import android.provider.CalendarContract
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 const val GOOGLE_ACCOUNT = "com.google"
 
-// System picker with the Google accounts already on the phone, plus adding a new one.
-// Picking an existing account needs no new sign-in and lets the app see that account.
-fun chooseAccountIntent(): Intent =
-    AccountManager.newChooseAccountIntent(null, null, arrayOf(GOOGLE_ACCOUNT), null, null, null, null)
+// Google accounts already on the phone. Needs the GET_ACCOUNTS permission;
+// without it (or on a phone that hides them) the list comes back empty.
+fun googleAccounts(context: Context): List<Account> = runCatching {
+    AccountManager.get(context).getAccountsByType(GOOGLE_ACCOUNT).orEmpty().toList()
+}.getOrDefault(emptyList())
 
 // The phone's own Google sign-in, for an account that is not on the phone yet
 fun addGoogleAccountIntent(): Intent =
     Intent(android.provider.Settings.ACTION_ADD_ACCOUNT).putExtra(android.provider.Settings.EXTRA_ACCOUNT_TYPES, arrayOf(GOOGLE_ACCOUNT))
 
-// Turns on calendar sync for the picked account and starts it, so its calendars show up.
-// Returns the account, or null when nothing was picked.
-fun syncPickedAccount(data: Intent?): Account? {
-    val name = data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME) ?: return null
-    val type = data.getStringExtra(AccountManager.KEY_ACCOUNT_TYPE) ?: GOOGLE_ACCOUNT
-    val account = Account(name, type)
+// False when no activity on the phone handles the intent; launching it then would do nothing or crash
+fun canStart(context: Context, intent: Intent): Boolean =
+    intent.resolveActivity(context.packageManager) != null
 
+// Turns on calendar sync for the account and starts it, so its calendars show up.
+// Suspend, the resolver calls run on a background thread.
+suspend fun syncAccount(account: Account) = withContext(Dispatchers.IO) {
     ContentResolver.setIsSyncable(account, CalendarContract.AUTHORITY, 1)
     ContentResolver.setSyncAutomatically(account, CalendarContract.AUTHORITY, true)
     requestCalendarSync(account)
-    return account
 }
 
 // Null when the Google Calendar app is not installed

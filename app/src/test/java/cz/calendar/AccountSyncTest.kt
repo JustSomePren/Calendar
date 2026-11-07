@@ -1,13 +1,14 @@
 package cz.calendar
 
 import android.accounts.Account
-import android.accounts.AccountManager
 import android.content.ContentResolver
-import android.content.Intent
+import android.content.Context
 import android.provider.CalendarContract
+import android.provider.Settings
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -17,28 +18,27 @@ import org.robolectric.shadows.ShadowContentResolver
 class AccountSyncTest {
 
     @Test
-    fun pickedAccountGetsCalendarSyncOnAndStarted() {
-        val picked = Intent()
-            .putExtra(AccountManager.KEY_ACCOUNT_NAME, "ja@firma.cz")
-            .putExtra(AccountManager.KEY_ACCOUNT_TYPE, GOOGLE_ACCOUNT)
+    fun accountGetsCalendarSyncOnAndStarted() = runBlocking {
+        val account = Account("ja@firma.cz", GOOGLE_ACCOUNT)
 
-        val account = syncPickedAccount(picked)
+        syncAccount(account)
 
-        assertEquals(Account("ja@firma.cz", GOOGLE_ACCOUNT), account)
         assertEquals(1, ContentResolver.getIsSyncable(account, CalendarContract.AUTHORITY))
         assertTrue(ContentResolver.getSyncAutomatically(account, CalendarContract.AUTHORITY))
         assertTrue(ShadowContentResolver.getStatus(account, CalendarContract.AUTHORITY).syncRequests > 0)
     }
 
     @Test
-    fun cancelledPickerChangesNothing() {
-        assertNull(syncPickedAccount(null))
-        assertNull(syncPickedAccount(Intent()))
+    fun addAccountIntentAsksThePhoneForGoogle() {
+        val intent = addGoogleAccountIntent()
+
+        assertEquals(Settings.ACTION_ADD_ACCOUNT, intent.action)
+        assertEquals(listOf(GOOGLE_ACCOUNT), intent.getStringArrayExtra(Settings.EXTRA_ACCOUNT_TYPES)?.toList())
     }
 
     @Test
-    fun pickerOffersGoogleAccounts() {
-        val intent = chooseAccountIntent()
-        assertEquals(listOf(GOOGLE_ACCOUNT), intent.getStringArrayExtra("allowableAccountTypes")?.toList())
+    fun phoneWithoutGoogleAccountsListsNone() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        assertTrue(googleAccounts(context).isEmpty())
     }
 }
