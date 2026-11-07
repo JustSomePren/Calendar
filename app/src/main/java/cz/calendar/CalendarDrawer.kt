@@ -40,6 +40,9 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.remember
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -60,6 +63,8 @@ fun CalendarDrawer(
     onAddAccount: () -> Unit,
     onNewCalendar: () -> Unit,
     onSettings: () -> Unit,
+    syncProblem: SyncProblem? = null,
+    onFixSync: (SyncProblem) -> Unit = {},
 ) {
     ModalDrawerSheet {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 12.dp)) {
@@ -68,6 +73,17 @@ fun CalendarDrawer(
                 Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.titleLarge,
             )
+            syncProblem?.let { problem ->
+                Card(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(problem.text, color = MaterialTheme.colorScheme.onErrorContainer)
+                        Button(onClick = { onFixSync(problem) }) { Text(problem.button) }
+                    }
+                }
+            }
 
             calendars.groupBy { it.account }.forEach { (account, accountCalendars) ->
                 Text(

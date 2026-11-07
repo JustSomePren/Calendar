@@ -33,14 +33,6 @@ fun syncPickedAccount(data: Intent?): Account? {
     return account
 }
 
-// The phone syncs Google calendars through the Google Calendar app, even when it is not used.
-// Without it a picked account never gets any calendars, so say so instead of waiting.
-// Android may hide other apps' sync parts, so only an app that is really missing or off counts.
-fun calendarSyncMissing(context: Context, type: String): Boolean {
-    val noAdapter = ContentResolver.getSyncAdapterTypes().none { it.authority == CalendarContract.AUTHORITY && it.accountType == type }
-    return type == GOOGLE_ACCOUNT && noAdapter && googleCalendarApp(context)?.enabled != true
-}
-
 // Null when the Google Calendar app is not installed
 fun googleCalendarApp(context: Context): ApplicationInfo? =
     runCatching { context.packageManager.getApplicationInfo(GOOGLE_CALENDAR_APP, 0) }.getOrNull()

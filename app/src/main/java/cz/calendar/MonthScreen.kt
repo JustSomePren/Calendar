@@ -4,8 +4,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import android.content.Intent
-import android.provider.Settings as SystemSettings
-import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -147,8 +145,12 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
     // Visibility and priorities change in other screens, so read them again on every refresh
     var hidden by remember(refreshTick) { mutableStateOf(settings.hiddenCalendars) }
     var calendars by remember { mutableStateOf(emptyList<CalendarInfo>()) }
+    // What keeps Google calendars from the phone; read again whenever the app comes back
+    var syncProblem by remember { mutableStateOf<SyncProblem?>(null) }
     LaunchedEffect(refreshTick, changes) {
         calendars = withContext(Dispatchers.IO) { repository.calendars() }
+        // A check that fails says nothing rather than closing the app
+        syncProblem = withContext(Dispatchers.IO) { runCatching { syncProblem(readSyncFacts(context, calendars)) }.getOrNull() }
     }
     val important = remember(refreshTick) { settings.eventsWithPriority(Priority.HIGH) }
     // Read again on every refresh, so "today" moves after midnight
@@ -164,12 +166,16 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
     }
     // The account whose calendars should arrive soon, and what to tell when they do not
     var waitingFor by remember { mutableStateOf<String?>(null) }
-    var syncMissing by remember { mutableStateOf(false) }
     var accountNote by remember { mutableStateOf<String?>(null) }
     val accountPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        val account = syncPickedAccount(result.data) ?: return@rememberLauncherForActivityResult
+        val account = syncPickedAccount(result.data)
+        if (account == null) {
+            Toast.makeText(context, "Účet se nevybral. V seznamu ho označ a potvrď tlačítkem OK.", Toast.LENGTH_LONG).show()
+            return@rememberLauncherForActivityResult
+        }
         when {
-            calendarSyncMissing(context, account.type) -> syncMissing = true
+            // The menu says what is missing and has the button for it
+            syncProblem.let { it != null && it != SyncProblem.ACCOUNT_OFF } -> scope.launch { drawerState.open() }
             calendars.any { it.account == account.name && it.synced } -> Toast.makeText(
                 context, "Účet ${account.name} už je připojený, jeho kalendáře jsou v menu.", Toast.LENGTH_LONG,
             ).show()
@@ -193,12 +199,25 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
 
     fun closeDrawer() = scope.launch { drawerState.close() }
 
+    // The first time calendars cannot come the menu opens by itself, so the fix is not hidden
+    LaunchedEffect(syncProblem) {
+        if (syncProblem != null && !settings.syncHelpShown) {
+            settings.syncHelpShown = true
+            drawerState.open()
+        }
+    }
+
     // Swiping would fight with paging through months, so the menu opens from its button only
     ModalNavigationDrawer(
         drawerState = drawerState,
         gesturesEnabled = drawerState.isOpen,
         drawerContent = {
             CalendarDrawer(
+                syncProblem = syncProblem,
+                onFixSync = { problem ->
+                    fixSync(context, problem)
+                    changes++
+                },
                 calendars = calendars,
                 hidden = hidden,
                 onToggle = { calendar ->
@@ -302,8 +321,7 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
                 Column(horizontalAlignment = Alignment.End) {
                     TextButton(onClick = {
                         addingAccount = false
-                        if (calendarSyncMissing(context, GOOGLE_ACCOUNT)) syncMissing = true
-                        else runCatching { newAccount.launch(addGoogleAccountIntent()) }
+                        runCatching { newAccount.launch(addGoogleAccountIntent()) }
                     }) { Text("Nový Google účet") }
                     TextButton(onClick = {
                         addingAccount = false
@@ -338,33 +356,6 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
                 }) { Text(if (calendar.local) "Smazat" else "Přestat") }
             },
             dismissButton = { TextButton(onClick = { removing = null }) { Text("Zrušit") } },
-        )
-    }
-
-    if (syncMissing) {
-        val installed = googleCalendarApp(context)
-        AlertDialog(
-            onDismissRequest = { syncMissing = false },
-            title = { Text("Google kalendáře se nestáhnou") },
-            text = {
-                Text(
-                    "Kalendáře Google účtů do telefonu stahuje aplikace Google Kalendář. " +
-                        (if (installed == null) "V telefonu není nainstalovaná." else "V telefonu je vypnutá.") +
-                        " Stačí ji mít zapnutou, používat ji nemusíš. Upozornění z ní vypneš v Nastavení tohoto kalendáře.",
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    syncMissing = false
-                    val intent = if (installed == null) {
-                        Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$GOOGLE_CALENDAR_APP"))
-                    } else {
-                        Intent(SystemSettings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$GOOGLE_CALENDAR_APP"))
-                    }
-                    runCatching { context.startActivity(intent) }
-                }) { Text(if (installed == null) "Nainstalovat" else "Zapnout") }
-            },
-            dismissButton = { TextButton(onClick = { syncMissing = false }) { Text("Zavřít") } },
         )
     }
 

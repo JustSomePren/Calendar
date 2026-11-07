@@ -22,5 +22,7 @@ fun setUpFakeCalendar(): Application {
     // WorkManager starts itself on a real phone. Here a fresh test one per test, so background work
     // left over from an earlier test cannot run into the next one.
     WorkManagerTestInitHelper.initializeTestWorkManager(app, Configuration.Builder().setExecutor(SynchronousExecutor()).build())
+    // Robolectric has no Google Calendar app; the menu must not open by itself over every test
+    Settings(app).syncHelpShown = true
     return app
 }

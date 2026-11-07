@@ -103,6 +103,11 @@ class Settings(context: Context) {
     val hasVacations: Boolean
         get() = prefs.all.keys.any { it.startsWith("vacation_") }
 
+    // The menu opened by itself once to show why Google calendars do not come
+    var syncHelpShown: Boolean
+        get() = prefs.getBoolean("sync_help_shown", false)
+        set(value) = prefs.edit().putBoolean("sync_help_shown", value).apply()
+
     // Photos from the Galerie app as the background of the days in the month view
     var showPhotos: Boolean
         get() = prefs.getBoolean("show_photos", true)
