@@ -127,7 +127,7 @@ private fun EventEditScreen(
 
     LaunchedEffect(Unit) {
         val loaded = withContext(Dispatchers.IO) {
-            val all = repository.calendars()
+            val all = repository.calendars().filter { it.synced }
             val event = if (eventId != null) {
                 repository.event(eventId, instanceBegin)?.let { event ->
                     val series = event.originalId ?: eventId

@@ -42,6 +42,7 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextAlign
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
+import androidx.glance.color.ColorProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.DayOfWeek
@@ -50,6 +51,9 @@ import java.time.YearMonth
 
 // Bumped on every refresh; a widget that is still showing reloads its events when it changes
 private val refreshKey = longPreferencesKey("refresh")
+
+// Same blue Saturday as in the app
+private val saturday = ColorProvider(day = Color(0xFF1A62C9), night = Color(0xFF8AB4F8))
 
 private class WidgetData(val month: YearMonth, val days: List<LocalDate>, val events: Map<LocalDate, List<CalendarEvent>>?)
 
@@ -131,7 +135,11 @@ private fun WidgetContent(month: YearMonth, days: List<LocalDate>, events: Map<L
                         name,
                         GlanceModifier.defaultWeight(),
                         style = TextStyle(
-                            color = if (index == 6) colors.error else colors.onSurfaceVariant,
+                            color = when (index) {
+                                5 -> saturday
+                                6 -> colors.error
+                                else -> colors.onSurfaceVariant
+                            },
                             fontSize = 11.sp,
                             textAlign = TextAlign.Center,
                         ),
@@ -177,6 +185,7 @@ private fun WidgetDay(day: LocalDate, col: Int, inMonth: Boolean, layout: WeekLa
                     isToday -> colors.onPrimary
                     !inMonth -> colors.outline
                     day.dayOfWeek == DayOfWeek.SUNDAY -> colors.error
+                    day.dayOfWeek == DayOfWeek.SATURDAY -> saturday
                     else -> colors.onSurface
                 },
                 fontSize = 11.sp,

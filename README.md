@@ -8,7 +8,9 @@ Zobrazuje kalendáře, které už má telefon synchronizované, tedy i všechny 
 
 - měsíc na celou obrazovku, události přímo ve dnech, vícedenní jako jeden pruh
 - listování měsíců tažením do stran, tlačítko „Dnes“, klepnutím na den jeho přehled
-- levé menu (☰): kalendáře podle účtů se zaškrtnutím, přidání účtu, synchronizace účtů, nastavení
+- levé menu (☰): připojené účty a všechny jejich kalendáře se zaškrtnutím, co vidíš; kalendář, který telefon zatím nesynchronizuje (např. pracovní přidaný v Google Kalendáři na webu), se zaškrtnutím začne synchronizovat
+- „Nový kalendář v telefonu“: kalendář bez účtu, zůstává jen v telefonu (nezálohuje se)
+- klepnutím na den detail se všemi jeho událostmi, seřazenými: osobní, pracovní, které se tě týkají, ostatní pracovní, zbytek; tažením do stran další dny
 - „Přidat účet“ nabídne účty Google, které už v telefonu jsou (bez nového přihlašování), aplikace u vybraného zapne a spustí synchronizaci kalendáře; jde přidat i úplně nový účet
 - přidržení dne a tažení přes další dny založí celodenní událost přes vybrané dny (samotné přidržení založí událost na ten den)
 - vlastní editor: název, celý den, začátek a konec, kalendář, opakování, priorita, místo, poznámka, účastníci

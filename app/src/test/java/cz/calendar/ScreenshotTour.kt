@@ -152,12 +152,7 @@ class ScreenshotTour {
     fun monthLargeFont() = shot<MainActivity>("11_month_large_font", "Zubař")
 
     @Test
-    fun dayPanel() = shot<MainActivity>(
-        "03_day_panel",
-        "Porada týmu",
-        Intent(app, MainActivity::class.java).putExtra(EXTRA_DAY, today.toString()),
-        wholeScreen = true,
-    )
+    fun dayDetail() = shot<DayActivity>("03_day_detail", "Porada týmu", dayIntent(app, today))
 
     @Test
     fun drawer() {

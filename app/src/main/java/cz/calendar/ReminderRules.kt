@@ -104,6 +104,15 @@ fun autoReminderHint(category: Category, mine: Boolean, matchesFilter: Boolean):
     else -> "Pracovní kalendář: neupozorní. Pro sledování zvol „Vždy“."
 }
 
+// Order within a day: personal first, then work that involves me, other work, the rest
+fun eventRank(category: Category, mine: Boolean, matchesFilter: () -> Boolean): Int = when (category) {
+    Category.PERSONAL -> 0
+    Category.WORK -> if (mine || matchesFilter()) 1 else 2
+    Category.QUIET -> 3
+}
+
+val rankLabels = listOf("Osobní", "Pracovní – týká se mě", "Pracovní", "Ostatní")
+
 fun matchesWorkFilter(
     event: UpcomingEvent,
     attendees: List<Attendee>,
