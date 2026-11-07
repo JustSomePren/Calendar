@@ -114,8 +114,9 @@ class UserFlowTest {
         assertEquals(1L, saved[Events.CALENDAR_ID])
         assertEquals(at(9), saved[Events.DTSTART])
         val id = saved[Events._ID] as Long
-        waitFor { settings.priority(id) == Priority.HIGH }
-        assertEquals(Watch.ALWAYS, settings.watch(id))
+        // The watch choice is stored last, after it everything is saved
+        waitFor { settings.watch(id) == Watch.ALWAYS }
+        assertEquals(Priority.HIGH, settings.priority(id))
         assertEquals(1L, settings.lastCalendar)
         assertTrue(settings.isCreated(id))
     }

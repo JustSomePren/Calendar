@@ -5,7 +5,8 @@ import android.app.Application
 import android.provider.CalendarContract
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.Configuration
-import androidx.work.WorkManager
+import androidx.work.testing.SynchronousExecutor
+import androidx.work.testing.WorkManagerTestInitHelper
 import org.robolectric.Robolectric
 import org.robolectric.Shadows
 
@@ -18,7 +19,8 @@ fun setUpFakeCalendar(): Application {
         Manifest.permission.WRITE_CALENDAR,
         Manifest.permission.POST_NOTIFICATIONS,
     )
-    // WorkManager starts itself on a real phone, Robolectric needs a hand
-    runCatching { WorkManager.initialize(app, Configuration.Builder().build()) }
+    // WorkManager starts itself on a real phone. Here a fresh test one per test, so background work
+    // left over from an earlier test cannot run into the next one.
+    WorkManagerTestInitHelper.initializeTestWorkManager(app, Configuration.Builder().setExecutor(SynchronousExecutor()).build())
     return app
 }

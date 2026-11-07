@@ -3,6 +3,15 @@ package cz.calendar
 import android.appwidget.AppWidgetManager
 import android.content.Context
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.glance.currentState
+import androidx.glance.appwidget.GlanceAppWidgetManager
+import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,27 +48,46 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
 
+// Bumped on every refresh; a widget that is still showing reloads its events when it changes
+private val refreshKey = longPreferencesKey("refresh")
+
+private class WidgetData(val month: YearMonth, val days: List<LocalDate>, val events: Map<LocalDate, List<CalendarEvent>>?)
+
+private suspend fun loadWidgetData(context: Context): WidgetData = withContext(Dispatchers.IO) {
+    val month = YearMonth.now()
+    val days = gridDays(month)
+    val events = if (context.hasCalendarAccess()) {
+        val settings = Settings(context)
+        CalendarRepository(context.contentResolver)
+            .eventsByDay(days.first(), days.last(), settings.hiddenCalendars, settings.eventsWithPriority(Priority.HIGH))
+    } else {
+        null
+    }
+    WidgetData(month, days, events)
+}
+
 class MonthWidget : GlanceAppWidget() {
 
     override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val month = YearMonth.now()
-        val days = gridDays(month)
-        val events = if (context.hasCalendarAccess()) {
-            withContext(Dispatchers.IO) {
-                CalendarRepository(context.contentResolver)
-                    .eventsByDay(days.first(), days.last(), Settings(context).hiddenCalendars, Settings(context).eventsWithPriority(Priority.HIGH))
-            }
-        } else {
-            null
-        }
-
+        val initial = loadWidgetData(context)
         provideContent {
+            val refresh = currentState(refreshKey) ?: 0L
+            var data by remember { mutableStateOf(initial) }
+            LaunchedEffect(refresh) { data = loadWidgetData(context) }
             GlanceTheme {
-                WidgetContent(month, days, events)
+                WidgetContent(data.month, data.days, data.events)
             }
         }
+    }
+}
+
+// Plain update() reaches a running widget session without loading new events, so change its state too
+suspend fun refreshMonthWidgets(context: Context) {
+    GlanceAppWidgetManager(context).getGlanceIds(MonthWidget::class.java).forEach { id ->
+        updateAppWidgetState(context, id) { it[refreshKey] = System.currentTimeMillis() }
+        MonthWidget().update(context, id)
     }
 }
 

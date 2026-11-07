@@ -218,6 +218,7 @@ class CalendarRepository(private val resolver: ContentResolver) {
                 instanceDate = occurrence?.let { Instant.ofEpochMilli(it).atZone(seriesZone).toLocalDate() },
                 loadedBegin = begin.takeIf { !allDay },
                 loadedEnd = end.takeIf { !allDay },
+                loadedSeriesStart = occurrence?.let { seriesStart },
                 eventTimeZone = storedZone,
                 organizer = organizer,
                 originalId = if (c.isNull(10)) null else c.getLong(10),
@@ -238,7 +239,7 @@ class CalendarRepository(private val resolver: ContentResolver) {
         values.put(Events.DTSTART, newStart)
         if (draft.id != null) {
             val seriesZone = if (draft.allDay) ZoneOffset.UTC else ZoneId.of(draft.timeZone)
-            if (rule != null) moveSeriesHistory(draft.id, newStart, seriesZone) else dropSeriesHistory(draft.id)
+            if (rule != null) moveSeriesHistory(draft.id, newStart, seriesZone, draft.allDay) else dropSeriesHistory(draft.id)
         }
         val id = if (draft.id == null) {
             values.put(Events.CALENDAR_ID, draft.calendarId)
@@ -258,7 +259,7 @@ class CalendarRepository(private val resolver: ContentResolver) {
 
     // Skipped and changed occurrences point at the old times of a series, move them along with it.
     // The series may also switch zone (all-day ones live in UTC), so read old times in the old zone.
-    private fun moveSeriesHistory(seriesId: Long, newStart: Long, newZone: ZoneId) {
+    private fun moveSeriesHistory(seriesId: Long, newStart: Long, newZone: ZoneId, newAllDay: Boolean) {
         val (oldStart, zone, excluded) = query(
             ContentUris.withAppendedId(Events.CONTENT_URI, seriesId),
             arrayOf(Events.DTSTART, Events.ALL_DAY, Events.EVENT_TIMEZONE, Events.EXDATE),
@@ -292,11 +293,9 @@ class CalendarRepository(private val resolver: ContentResolver) {
             val date = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd").withZone(ZoneOffset.UTC)
             val shifted = excluded.split(',').map { it.trim() }.joinToString(",") { value ->
                 runCatching {
-                    if (value.length == 8) {
-                        date.format(Instant.ofEpochMilli(moved(LocalDate.parse(value, date).atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli())))
-                    } else {
-                        utc.format(Instant.ofEpochMilli(moved(Instant.from(utc.parse(value)).toEpochMilli())))
-                    }
+                    val old = if (value.length == 8) LocalDate.parse(value, date).atStartOfDay().toInstant(ZoneOffset.UTC) else Instant.from(utc.parse(value))
+                    // Written the way the series now repeats, dates only for all-day ones
+                    (if (newAllDay) date else utc).format(Instant.ofEpochMilli(moved(old.toEpochMilli())))
                 }.getOrDefault(value)
             }
             resolver.update(

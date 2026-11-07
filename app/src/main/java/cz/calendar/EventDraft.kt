@@ -39,6 +39,7 @@ data class EventDraft(
     // Exact moments of a loaded timed event; the same clock time can happen twice when clocks go back
     val loadedBegin: Long? = null,
     val loadedEnd: Long? = null,
+    val loadedSeriesStart: Long? = null,
 ) : java.io.Serializable {
     val isValid: Boolean
         get() = if (allDay) !end.toLocalDate().isBefore(start.toLocalDate()) else !end.isBefore(start)
@@ -85,6 +86,9 @@ data class EventDraft(
     // change or when switching all-day on or off
     fun seriesStartMillis(): Long {
         if (rule == null || seriesStartDate == null || instanceDate == null) return startMillis()
+        // Time not touched: keep the series as it is, the occurrence may show a shifted time
+        // on a daylight-saving day (02:30 does not exist and shows as 03:30)
+        if (loadedSeriesStart != null && unchanged(start, loadedBegin) != null) return loadedSeriesStart
         val shown = shownInSeriesZone()
         val day = seriesStartDate.plusDays(seriesDayShift())
         val local = if (allDay) day.atStartOfDay() else day.atTime(shown.toLocalTime())

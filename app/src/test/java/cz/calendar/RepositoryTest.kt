@@ -274,6 +274,52 @@ class RepositoryTest {
     }
 
     @Test
+    fun allDaySeriesBecomingTimedKeepsSkippedDate() {
+        val previous = java.util.TimeZone.getDefault()
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Europe/Prague"))
+        try {
+            val text = listOf(
+                "BEGIN:VEVENT", "UID:a", "SUMMARY:Úklid", "DTSTART;VALUE=DATE:20261102", "DTEND;VALUE=DATE:20261103",
+                "RRULE:FREQ=WEEKLY", "EXDATE;VALUE=DATE:20261116", "END:VEVENT",
+            ).joinToString("\r\n")
+            repository.import(parseIcs(text), 1)
+            val id = FakeCalendarProvider.events.single()[Events._ID] as Long
+
+            val ninth = java.time.LocalDate.of(2026, 11, 9)
+            val opened = repository.event(id, ninth.atStartOfDay().toInstant(java.time.ZoneOffset.UTC).toEpochMilli())!!
+            repository.saveEvent(opened.copy(allDay = false, start = ninth.atTime(10, 0), end = ninth.atTime(11, 0)))
+
+            assertEquals("20261116T090000Z", FakeCalendarProvider.event(id)[Events.EXDATE])
+        } finally {
+            java.util.TimeZone.setDefault(previous)
+        }
+    }
+
+    @Test
+    fun renamingNightSeriesFromSpringForwardDayKeepsItsTime() {
+        val previous = java.util.TimeZone.getDefault()
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Europe/Prague"))
+        try {
+            val prague = ZoneId.of("Europe/Prague")
+            val start = java.time.LocalDateTime.of(2026, 3, 20, 2, 30).atZone(prague).toInstant().toEpochMilli()
+            val id = FakeCalendarProvider.addEvent(
+                mapOf(
+                    Events.CALENDAR_ID to 1L, Events.TITLE to "Záloha", Events.ALL_DAY to 0, Events.RRULE to "FREQ=DAILY",
+                    Events.DTSTART to start, Events.DURATION to "P1800S", Events.EVENT_TIMEZONE to "Europe/Prague",
+                )
+            )
+            // 02:30 does not exist that night, the provider shows it at 03:30
+            val occurrence = java.time.Instant.parse("2026-03-29T01:30:00Z").toEpochMilli()
+
+            repository.saveEvent(repository.event(id, occurrence)!!.copy(title = "Záloha serveru"))
+
+            assertEquals(start, FakeCalendarProvider.event(id)[Events.DTSTART])
+        } finally {
+            java.util.TimeZone.setDefault(previous)
+        }
+    }
+
+    @Test
     fun stoppingRepetitionRemovesChangedOccurrences() {
         val id = repository.saveEvent(EventDraft.new(1, day).copy(rule = "FREQ=WEEKLY", title = "Porada"))
         val series = FakeCalendarProvider.event(id)[Events.DTSTART] as Long

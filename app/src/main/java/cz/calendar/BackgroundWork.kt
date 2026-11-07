@@ -2,7 +2,6 @@ package cz.calendar
 
 import android.content.Context
 import android.provider.CalendarContract
-import androidx.glance.appwidget.updateAll
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
@@ -18,7 +17,7 @@ class RefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorke
 
     override suspend fun doWork(): Result {
         EventNotifier.run(applicationContext)
-        MonthWidget().updateAll(applicationContext)
+        refreshMonthWidgets(applicationContext)
         // A content trigger fires only once, so wait for the next change again
         if (WATCH in tags) BackgroundWork.watch(applicationContext, ExistingWorkPolicy.APPEND_OR_REPLACE)
         return Result.success()

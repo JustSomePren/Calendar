@@ -57,6 +57,11 @@ fun CalendarApp(
         BackgroundWork.start(context, refreshWidget = true)
     }
 
+    // Access may have been granted in system settings meanwhile
+    LaunchedEffect(refreshTick) {
+        hasPermission = context.hasCalendarAccess()
+    }
+
     LaunchedEffect(Unit) {
         val missing = (calendarPermissions + notificationPermissions)
             .filter { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }

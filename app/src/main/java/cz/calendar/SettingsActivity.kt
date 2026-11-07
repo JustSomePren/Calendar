@@ -244,7 +244,8 @@ private fun ImportSection(calendars: List<CalendarInfo>, repository: CalendarRep
                 onSuccess = { (found, added) -> "Nalezeno $found událostí, přidáno $added, ${found - added} už v kalendáři bylo." },
                 onFailure = { "Soubor se nepodařilo načíst." },
             )
-            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            // The result may come back to a recreated screen, so make sure the toast runs on the main thread
+            withContext(Dispatchers.Main) { Toast.makeText(context, message, Toast.LENGTH_LONG).show() }
         }
     }
 
