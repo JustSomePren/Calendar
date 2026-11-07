@@ -91,6 +91,7 @@ díky tomu se navzájem poznají a nová verze se vždy nainstaluje přes starou
 3. **New repository secret**, název `SIGNING_KEY_PASSWORD`, hodnota = obsah `SIGNING_KEY_PASSWORD.txt`.
 4. Totéž udělej v druhém repozitáři (Calendar i Photo_Gallery).
 5. V **Actions** spusť znovu poslední běh **Build APK** (bez klíče skončí chybou „Chybí secret SIGNING_KEY“).
+   Hotové APK se objeví v **Releases** pod odkazem z části Instalace.
 
 Soubor `podpisovy-klic.p12` a heslo si **schovej** (správce hesel nebo soukromý Disk).
 Bez nich nepůjde vydat novou verzi, která se nainstaluje přes starou, a Google záloha se nevrátí.
@@ -118,11 +119,12 @@ nastavení počká a přiřadí se samo, jakmile události dorazí.
 
 ## Instalace na telefon
 
-1. Na GitHubu otevři **Actions** → poslední běh **Build APK**.
-2. Dole v **Artifacts** stáhni `kalendar-apk` a rozbal ho.
-3. Soubor `app-debug.apk` pošli do telefonu a otevři ho.
-4. Povol instalaci z neznámých zdrojů, když se telefon zeptá.
-5. Při prvním spuštění povol přístup ke kalendářům a upozorněním.
+1. V telefonu otevři odkaz https://github.com/JustSomePren/Calendar/releases/download/nejnovejsi/kalendar.apk
+2. Stažený soubor otevři (v oznámení o stažení) a klepni na **Instalovat**.
+3. Povol instalaci z neznámých zdrojů, když se telefon zeptá (jen poprvé).
+4. Při prvním spuštění povol přístup ke kalendářům a upozorněním.
+
+Odkaz vede vždy na nejnovější verzi, aktualizace je stejná: stáhnout a nainstalovat přes starou.
 
 Pokud nějaký Google kalendář chybí, zapni u něj synchronizaci v aplikaci Google Kalendář → Nastavení → tvůj účet.
 
