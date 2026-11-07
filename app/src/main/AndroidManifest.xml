@@ -15,6 +15,9 @@
     <!-- The Galerie app pairs photos with events -->
     <queries>
         <package android:name="com.justsomepren.gallery" />
+        <!-- Syncs Google calendars to the phone; without it new accounts get nothing -->
+        <package android:name="com.google.android.calendar" />
+        <package android:name="com.google.android.syncadapters.calendar" />
     </queries>
 
     <application

@@ -35,6 +35,11 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -51,6 +56,7 @@ fun CalendarDrawer(
     calendars: List<CalendarInfo>,
     hidden: Set<Long>,
     onToggle: (CalendarInfo) -> Unit,
+    onRemove: (CalendarInfo) -> Unit,
     onAddAccount: () -> Unit,
     onNewCalendar: () -> Unit,
     onSettings: () -> Unit,
@@ -72,7 +78,12 @@ fun CalendarDrawer(
                 )
                 // Synced calendars first, the ones still waiting to be switched on below
                 accountCalendars.sortedByDescending { it.synced }.forEach { calendar ->
-                    CalendarRow(calendar, shown = calendar.synced && calendar.id !in hidden, onToggle = { onToggle(calendar) })
+                    CalendarRow(
+                        calendar,
+                        shown = calendar.synced && calendar.id !in hidden,
+                        onToggle = { onToggle(calendar) },
+                        onRemove = { onRemove(calendar) },
+                    )
                 }
             }
             if (calendars.isEmpty()) {
@@ -92,7 +103,8 @@ fun CalendarDrawer(
 }
 
 @Composable
-private fun CalendarRow(calendar: CalendarInfo, shown: Boolean, onToggle: () -> Unit) {
+private fun CalendarRow(calendar: CalendarInfo, shown: Boolean, onToggle: () -> Unit, onRemove: () -> Unit) {
+    var menu by remember { mutableStateOf(false) }
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -100,9 +112,24 @@ private fun CalendarRow(calendar: CalendarInfo, shown: Boolean, onToggle: () -> 
         Checkbox(checked = shown, onCheckedChange = { onToggle() })
         Box(Modifier.size(12.dp).background(Color(calendar.color), CircleShape))
         Spacer(Modifier.width(12.dp))
-        Column {
+        Column(Modifier.weight(1f)) {
             Text(calendar.name)
             if (!calendar.synced) Hint("Nesynchronizuje se – zaškrtnutím zapneš")
+        }
+        // A phone calendar can be deleted; an account's calendar only stops syncing, it lives in the account
+        if (calendar.local || calendar.synced) {
+            Box {
+                IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "Možnosti ${calendar.name}") }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(
+                        text = { Text(if (calendar.local) "Smazat kalendář" else "Přestat synchronizovat") },
+                        onClick = {
+                            menu = false
+                            onRemove()
+                        },
+                    )
+                }
+            }
         }
     }
 }

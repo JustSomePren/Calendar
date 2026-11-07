@@ -4,6 +4,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import android.content.Intent
+import android.provider.Settings as SystemSettings
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -31,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -87,6 +90,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.time.DayOfWeek
 import java.time.Instant
@@ -151,10 +155,34 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
     val today = remember(refreshTick) { LocalDate.now() }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     var newCalendar by remember { mutableStateOf(false) }
+    var removing by remember { mutableStateOf<CalendarInfo?>(null) }
+    // The account whose calendars should arrive soon, and what to tell when they do not
+    var waitingFor by remember { mutableStateOf<String?>(null) }
+    var syncMissing by remember { mutableStateOf(false) }
+    var accountNote by remember { mutableStateOf<String?>(null) }
     val accountPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val account = syncPickedAccount(result.data) ?: return@rememberLauncherForActivityResult
-        Toast.makeText(context, "Kalendáře účtu ${account.name} se synchronizují, za chvíli se objeví.", Toast.LENGTH_LONG).show()
+        when {
+            calendarSyncMissing(context, account.type) -> syncMissing = true
+            calendars.any { it.account == account.name && it.synced } -> Toast.makeText(
+                context, "Účet ${account.name} už je připojený, jeho kalendáře jsou v menu.", Toast.LENGTH_LONG,
+            ).show()
+            else -> {
+                Toast.makeText(context, "Kalendáře účtu ${account.name} se stahují, za chvíli se objeví.", Toast.LENGTH_LONG).show()
+                waitingFor = account.name
+            }
+        }
         changes++
+    }
+    LaunchedEffect(waitingFor) {
+        val name = waitingFor ?: return@LaunchedEffect
+        delay(60_000)
+        val arrived = withContext(Dispatchers.IO) { repository.calendars().any { it.account == name } }
+        if (!arrived) {
+            accountNote = "Kalendáře účtu $name se ani po minutě nestáhly. V Nastavení telefonu → Hesla a účty → $name → " +
+                "Synchronizace účtu zkontroluj, že je zapnutý Kalendář."
+        }
+        waitingFor = null
     }
 
     fun closeDrawer() = scope.launch { drawerState.close() }
@@ -181,6 +209,7 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
                         settings.hiddenCalendars = hidden
                     }
                 },
+                onRemove = { removing = it },
                 onAddAccount = {
                     closeDrawer()
                     accountPicker.launch(chooseAccountIntent())
@@ -252,6 +281,67 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
                 }
             }
         }
+    }
+
+    removing?.let { calendar ->
+        AlertDialog(
+            onDismissRequest = { removing = null },
+            title = { Text(if (calendar.local) "Smazat kalendář?" else "Přestat synchronizovat?") },
+            text = {
+                Text(
+                    if (calendar.local) "Kalendář „${calendar.name}“ se smaže i se všemi událostmi. Nejde to vrátit."
+                    else "Kalendář „${calendar.name}“ zmizí z telefonu, v účtu ${calendar.account} zůstane. " +
+                        "Zpět ho zapneš zaškrtnutím v menu.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    removing = null
+                    scope.launch {
+                        withContext(Dispatchers.IO) {
+                            if (calendar.local) repository.deleteLocalCalendar(calendar) else repository.stopSyncing(calendar)
+                        }
+                        changes++
+                    }
+                }) { Text(if (calendar.local) "Smazat" else "Přestat") }
+            },
+            dismissButton = { TextButton(onClick = { removing = null }) { Text("Zrušit") } },
+        )
+    }
+
+    if (syncMissing) {
+        val installed = googleCalendarApp(context)
+        AlertDialog(
+            onDismissRequest = { syncMissing = false },
+            title = { Text("Google kalendáře se nestáhnou") },
+            text = {
+                Text(
+                    "Kalendáře Google účtů do telefonu stahuje aplikace Google Kalendář. " +
+                        (if (installed == null) "V telefonu není nainstalovaná." else "V telefonu je vypnutá.") +
+                        " Stačí ji mít zapnutou, používat ji nemusíš. Upozornění z ní vypneš v Nastavení tohoto kalendáře.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    syncMissing = false
+                    val intent = if (installed == null) {
+                        Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$GOOGLE_CALENDAR_APP"))
+                    } else {
+                        Intent(SystemSettings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$GOOGLE_CALENDAR_APP"))
+                    }
+                    runCatching { context.startActivity(intent) }
+                }) { Text(if (installed == null) "Nainstalovat" else "Zapnout") }
+            },
+            dismissButton = { TextButton(onClick = { syncMissing = false }) { Text("Zavřít") } },
+        )
+    }
+
+    accountNote?.let { note ->
+        AlertDialog(
+            onDismissRequest = { accountNote = null },
+            text = { Text(note) },
+            confirmButton = { TextButton(onClick = { accountNote = null }) { Text("OK") } },
+        )
     }
 
     if (newCalendar) {

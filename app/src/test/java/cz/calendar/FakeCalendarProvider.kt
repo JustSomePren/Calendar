@@ -137,6 +137,12 @@ class FakeCalendarProvider : ContentProvider() {
     }
 
     override fun delete(uri: Uri, selection: String?, args: Array<out String>?): Int = when (uri.pathSegments.first()) {
+        // Like the real provider, a deleted calendar takes its events along
+        "calendars" -> {
+            val id = uri.lastPathSegment!!.toLong()
+            events.removeIf { it[Events.CALENDAR_ID] == id }
+            if (calendars.removeIf { it[Calendars._ID] == id }) 1 else 0
+        }
         "events" -> when {
             uri.pathSegments.size > 1 -> if (events.removeIf { it[Events._ID] == uri.lastPathSegment!!.toLong() }) 1 else 0
             selection.orEmpty().startsWith(Events.ORIGINAL_ID) -> events.count { it[Events.ORIGINAL_ID].toString() == args!![0] }

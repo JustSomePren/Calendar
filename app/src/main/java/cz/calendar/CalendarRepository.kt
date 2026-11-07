@@ -111,13 +111,31 @@ class CalendarRepository(private val resolver: ContentResolver) {
         if (!calendar.local) requestCalendarSync(android.accounts.Account(calendar.account, calendar.accountType))
     }
 
+    // An account's calendar stays in the account; it only stops coming to this phone
+    fun stopSyncing(calendar: CalendarInfo) {
+        resolver.update(
+            ContentUris.withAppendedId(Calendars.CONTENT_URI, calendar.id),
+            contentValuesOf(Calendars.SYNC_EVENTS to 0, Calendars.VISIBLE to 0),
+            null,
+            null,
+        )
+    }
+
+    // A calendar made on this phone goes away with its events
+    fun deleteLocalCalendar(calendar: CalendarInfo) {
+        resolver.delete(ContentUris.withAppendedId(localOwner(), calendar.id), null, null)
+    }
+
+    // Local calendars may be created and deleted only by their "owner", which here is this app
+    private fun localOwner() = Calendars.CONTENT_URI.buildUpon()
+        .appendQueryParameter(android.provider.CalendarContract.CALLER_IS_SYNCADAPTER, "true")
+        .appendQueryParameter(Calendars.ACCOUNT_NAME, LOCAL_ACCOUNT)
+        .appendQueryParameter(Calendars.ACCOUNT_TYPE, android.provider.CalendarContract.ACCOUNT_TYPE_LOCAL)
+        .build()
+
     // A calendar kept only on this phone, for use without any account
     fun createLocalCalendar(name: String, color: Int): Long {
-        val asOwner = Calendars.CONTENT_URI.buildUpon()
-            .appendQueryParameter(android.provider.CalendarContract.CALLER_IS_SYNCADAPTER, "true")
-            .appendQueryParameter(Calendars.ACCOUNT_NAME, LOCAL_ACCOUNT)
-            .appendQueryParameter(Calendars.ACCOUNT_TYPE, android.provider.CalendarContract.ACCOUNT_TYPE_LOCAL)
-            .build()
+        val asOwner = localOwner()
         val values = contentValuesOf(
             Calendars.ACCOUNT_NAME to LOCAL_ACCOUNT,
             Calendars.ACCOUNT_TYPE to android.provider.CalendarContract.ACCOUNT_TYPE_LOCAL,

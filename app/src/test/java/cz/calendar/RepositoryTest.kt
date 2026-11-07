@@ -402,4 +402,25 @@ class RepositoryTest {
         assertEquals(listOf(day, day.plusDays(1), day.plusDays(2)), events.keys.sorted())
         assertEquals(true, events.getValue(day).single().multiDay)
     }
+
+    @Test
+    fun phoneCalendarIsDeletedWithItsEvents() {
+        val id = repository.createLocalCalendar("Výlety", 0xFF33B679.toInt())
+        repository.saveEvent(EventDraft.new(id, day).copy(title = "Sněžka"))
+        val calendar = repository.calendars().first { it.id == id }
+
+        repository.deleteLocalCalendar(calendar)
+
+        assertTrue(repository.calendars().none { it.id == id })
+        assertTrue(FakeCalendarProvider.events.none { it[Events.CALENDAR_ID] == id })
+    }
+
+    @Test
+    fun accountCalendarOnlyStopsSyncing() {
+        val calendar = repository.calendars().first { it.id == 1L }
+
+        repository.stopSyncing(calendar)
+
+        assertEquals(false, repository.calendars().first { it.id == 1L }.synced)
+    }
 }
