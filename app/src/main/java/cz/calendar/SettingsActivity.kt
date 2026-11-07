@@ -35,6 +35,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -104,6 +105,7 @@ private fun SettingsScreen(repository: CalendarRepository, settings: Settings, o
             WorkFilterSection(settings)
             NotificationsSection()
             ImportSection(calendars.filter { it.writable }, repository, settings)
+            PhotosSection(settings)
             BackupSection(settings)
         }
     }
@@ -291,4 +293,18 @@ private fun BackupSection(settings: Settings) {
         OutlinedButton(onClick = { save.launch("kalendar-zaloha.json") }) { Text("Uložit do souboru") }
         OutlinedButton(onClick = { load.launch(arrayOf("application/json", "*/*")) }) { Text("Načíst ze souboru") }
     }
+}
+
+@Composable
+private fun PhotosSection(settings: Settings) {
+    var show by remember { mutableStateOf(settings.showPhotos) }
+    SectionTitle("Fotky z Galerie")
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Fotka dne na pozadí měsíce", Modifier.weight(1f))
+        Switch(show, onCheckedChange = {
+            show = it
+            settings.showPhotos = it
+        })
+    }
+    Hint("Jen fotky a videa z fotoaparátu, přednost má oblíbená fotka. Potřebuje aplikaci Galerie.")
 }

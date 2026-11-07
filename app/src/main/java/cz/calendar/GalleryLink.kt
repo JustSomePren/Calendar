@@ -10,6 +10,7 @@ import android.database.MatrixCursor
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.util.LruCache
 import android.widget.Toast
 import java.time.Duration
 import java.time.LocalDate
@@ -48,9 +49,20 @@ object GalleryLink {
     fun place(context: Context, window: Pair<Long, Long>): Pair<Double, Double>? =
         query(context, "place", windowParams(window)) { it.getDouble(0) to it.getDouble(1) }?.firstOrNull()
 
-    fun thumbnail(context: Context, photoId: Long): Bitmap? = runCatching {
-        context.contentResolver.openInputStream(uri("thumb/$photoId"))?.use(BitmapFactory::decodeStream)
-    }.getOrNull()
+    // Recently shown thumbnails, so paging through months does not ask the gallery again
+    private val thumbnails = LruCache<Long, Bitmap>(80)
+
+    fun thumbnail(context: Context, photoId: Long): Bitmap? = thumbnails[photoId] ?: runCatching {
+        // Half the memory of full colour, invisible at this size
+        val options = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.RGB_565 }
+        context.contentResolver.openInputStream(uri("thumb/$photoId"))?.use { BitmapFactory.decodeStream(it, null, options) }
+    }.getOrNull()?.also { thumbnails.put(photoId, it) }
+
+    // The best photo of each day, only what was really taken with the camera
+    fun covers(context: Context, from: LocalDate, to: LocalDate): Map<LocalDate, Bitmap> =
+        query(context, "covers", mapOf("from" to "${from.toEpochDay()}", "to" to "${to.toEpochDay()}")) { c ->
+            LocalDate.ofEpochDay(c.getLong(0)) to c.getLong(1)
+        }.orEmpty().mapNotNull { (day, id) -> thumbnail(context, id)?.let { day to it } }.toMap()
 
     fun open(context: Context, title: String, window: Pair<Long, Long>) {
         val intent = Intent(ACTION_SHOW).setPackage(PACKAGE)

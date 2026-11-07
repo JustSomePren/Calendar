@@ -66,7 +66,7 @@ fun VacationSection(vacation: Vacation?, title: String, accounts: List<String>, 
         ChoiceRow("Účet", accounts.map { it to it }, vacation.account ?: accounts.first(), enabled = true) {
             onChange(vacation.copy(account = it))
         }
-        Hint("Galerie pošle fotky z těchto dní samy na Wi-Fi, bez snímků obrazovky.")
+        Hint("Galerie pošle fotky a videa z fotoaparátu z těchto dní sama na Wi-Fi.")
     }
 }
 
@@ -93,7 +93,7 @@ fun EventPhotos(draft: EventDraft, onUseLocation: ((String) -> Unit)?) {
     when {
         photos == null -> Hint("Hledám fotky v Galerii…")
         photos.count == null -> Hint("Galerie fotky nepředala. Otevři jednou Galerii a povol jí přístup k fotkám.")
-        photos.count == 0 -> Hint("Z doby události nejsou žádné fotky (snímky obrazovky se nepočítají).")
+        photos.count == 0 -> Hint("Z doby události nejsou žádné fotky z fotoaparátu (snímky obrazovky a stažené obrázky se nepočítají).")
     }
     if (photos?.count == null || photos.count == 0) return
     val open = { GalleryLink.open(context, draft.title.ifBlank { "Událost" }, window) }

@@ -55,9 +55,13 @@ Aby upozornění nechodila dvakrát, vypni je v aplikaci Google Kalendář (v na
 
 Když je v telefonu nainstalovaná i aplikace **Galerie**, propojí se samy, nic se nenastavuje:
 
-- **Fotky u události**: v editoru proběhlé události jsou náhledy fotek, které vznikly během ní
+- **Fotka dne na pozadí měsíce**: každý den s fotkami má jako pozadí nejlepší fotku toho dne
+  (přednost má oblíbená, jinak nejostřejší). Vypnout jde v Nastavení → Fotky z Galerie.
+- **Fotky u události**: v přehledu dne je u proběhlé události počet fotek, v detailu události náhledy
   (u událostí s časem 15 min předem až 30 min po konci, u celodenních celé dny).
-  Klepnutím se otevřou v Galerii. Snímky obrazovky se nepočítají.
+  Klepnutím se otevřou v Galerii.
+- Počítají se **jen fotky a videa z fotoaparátu** (složka DCIM). Snímky obrazovky, stažené obrázky
+  a obrázky z WhatsAppu apod. ne.
 - **Dovolená / výlet** (jen u kalendářů s kategorií Osobní): přepínač v editoru.
   Galerie pak z fotek těch dní udělá album (název = název události, nebo vlastní)
   a událost ukáže ve svém kalendáři jako barevný pruh.

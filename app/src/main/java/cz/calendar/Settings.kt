@@ -96,6 +96,11 @@ class Settings(context: Context) {
     val hasVacations: Boolean
         get() = prefs.all.keys.any { it.startsWith("vacation_") }
 
+    // Photos from the Galerie app as the background of the days in the month view
+    var showPhotos: Boolean
+        get() = prefs.getBoolean("show_photos", true)
+        set(value) = prefs.edit().putBoolean("show_photos", value).apply()
+
     var notifierStarted: Boolean
         get() = prefs.getBoolean("notifier_started", false)
         set(value) = prefs.edit().putBoolean("notifier_started", value).apply()

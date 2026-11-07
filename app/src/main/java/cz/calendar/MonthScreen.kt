@@ -1,5 +1,6 @@
 package cz.calendar
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import android.content.Intent
@@ -48,6 +49,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
@@ -143,10 +147,18 @@ fun MonthScreen(
                 val month = monthForPage(page)
                 val days = remember(month) { gridDays(month) }
                 var events by remember { mutableStateOf(emptyMap<LocalDate, List<CalendarEvent>>()) }
+                var photos by remember { mutableStateOf(emptyMap<LocalDate, ImageBitmap>()) }
                 LaunchedEffect(month, refreshTick) {
                     events = withContext(Dispatchers.IO) { repository.eventsByDay(days.first(), days.last(), hidden, important) }
+                    photos = withContext(Dispatchers.IO) {
+                        if (settings.showPhotos && GalleryLink.installed(context)) {
+                            GalleryLink.covers(context, days.first(), days.last()).mapValues { it.value.asImageBitmap() }
+                        } else {
+                            emptyMap()
+                        }
+                    }
                 }
-                MonthGrid(month, days, events, onDayClick = { selectedDay = it })
+                MonthGrid(month, days, events, photos, onDayClick = { selectedDay = it })
             }
         }
     }
@@ -176,12 +188,13 @@ private fun MonthGrid(
     month: YearMonth,
     days: List<LocalDate>,
     events: Map<LocalDate, List<CalendarEvent>>,
+    photos: Map<LocalDate, ImageBitmap>,
     onDayClick: (LocalDate) -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
         days.chunked(7).forEach { week ->
             HorizontalDivider()
-            WeekRow(week, month, events, onDayClick, Modifier.weight(1f))
+            WeekRow(week, month, events, photos, onDayClick, Modifier.weight(1f))
         }
     }
 }
@@ -191,6 +204,7 @@ private fun WeekRow(
     week: List<LocalDate>,
     month: YearMonth,
     events: Map<LocalDate, List<CalendarEvent>>,
+    photos: Map<LocalDate, ImageBitmap>,
     onDayClick: (LocalDate) -> Unit,
     modifier: Modifier,
 ) {
@@ -204,6 +218,7 @@ private fun WeekRow(
                 DayCell(
                     day = day,
                     inMonth = YearMonth.from(day) == month,
+                    photo = photos[day],
                     singles = layout.singles[col],
                     hidden = layout.hidden[col],
                     moreRow = layout.moreRow[col],
@@ -230,12 +245,18 @@ private fun WeekRow(
 private fun DayCell(
     day: LocalDate,
     inMonth: Boolean,
+    photo: ImageBitmap?,
     singles: List<Pair<Int, CalendarEvent>>,
     hidden: Int,
     moreRow: Int,
     modifier: Modifier,
 ) {
     Box(modifier.alpha(if (inMonth) 1f else 0.4f)) {
+        if (photo != null) {
+            Image(photo, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            // Faded, so the day number and events stay readable
+            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f)))
+        }
         DayNumber(day, Modifier.align(Alignment.TopCenter))
         singles.forEach { (row, event) ->
             EventChip(event, startsHere = true, endsHere = true, modifier = Modifier.offset(y = rowOffset(row)).fillMaxWidth())
