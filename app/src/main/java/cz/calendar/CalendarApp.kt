@@ -48,14 +48,19 @@ fun CalendarApp(
     settings: Settings,
     refreshTick: Int,
     openDay: LocalDate?,
+    onAccess: () -> Unit = {},
     onOpenDayHandled: () -> Unit,
 ) {
     val context = LocalContext.current
     var hasPermission by remember { mutableStateOf(context.hasCalendarAccess()) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         hasPermission = context.hasCalendarAccess()
+        if (hasPermission) onAccess()
         BackgroundWork.refreshNow(context)
     }
+
+    // Access can also be granted in the system settings, check again on every return to the app
+    LaunchedEffect(refreshTick) { hasPermission = context.hasCalendarAccess() }
 
     LaunchedEffect(Unit) {
         val missing = (calendarPermissions + notificationPermissions)

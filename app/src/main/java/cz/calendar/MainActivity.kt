@@ -44,7 +44,9 @@ class MainActivity : ComponentActivity() {
         val settings = Settings(this)
         setContent {
             CalendarTheme {
-                CalendarApp(repository, settings, refreshTick.intValue, openDay.value) { openDay.value = null }
+                CalendarApp(repository, settings, refreshTick.intValue, openDay.value, onAccess = ::watchCalendar) {
+                    openDay.value = null
+                }
             }
         }
     }
@@ -54,14 +56,24 @@ class MainActivity : ComponentActivity() {
         openDay.value = intent.dayExtra()
     }
 
+    private var watching = false
+
+    // Android closes the app when it watches the calendar without access, so only once it has it
+    private fun watchCalendar() {
+        if (watching || !hasCalendarAccess()) return
+        contentResolver.registerContentObserver(CalendarContract.CONTENT_URI, true, observer)
+        watching = true
+    }
+
     override fun onStart() {
         super.onStart()
-        contentResolver.registerContentObserver(CalendarContract.CONTENT_URI, true, observer)
+        watchCalendar()
         refreshTick.intValue++
     }
 
     override fun onStop() {
-        contentResolver.unregisterContentObserver(observer)
+        if (watching) contentResolver.unregisterContentObserver(observer)
+        watching = false
         super.onStop()
     }
 }
