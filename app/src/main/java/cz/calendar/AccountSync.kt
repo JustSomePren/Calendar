@@ -16,6 +16,10 @@ const val GOOGLE_ACCOUNT = "com.google"
 fun chooseAccountIntent(): Intent =
     AccountManager.newChooseAccountIntent(null, null, arrayOf(GOOGLE_ACCOUNT), null, null, null, null)
 
+// The phone's own Google sign-in, for an account that is not on the phone yet
+fun addGoogleAccountIntent(): Intent =
+    Intent(android.provider.Settings.ACTION_ADD_ACCOUNT).putExtra(android.provider.Settings.EXTRA_ACCOUNT_TYPES, arrayOf(GOOGLE_ACCOUNT))
+
 // Turns on calendar sync for the picked account and starts it, so its calendars show up.
 // Returns the account, or null when nothing was picked.
 fun syncPickedAccount(data: Intent?): Account? {

@@ -156,6 +156,12 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     var newCalendar by remember { mutableStateOf(false) }
     var removing by remember { mutableStateOf<CalendarInfo?>(null) }
+    var addingAccount by remember { mutableStateOf(false) }
+    // A new account syncs its calendars by itself once signed in; the observer then shows them
+    val newAccount = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        changes++
+        Toast.makeText(context, "Po přihlášení se kalendáře nového účtu za chvíli stáhnou.", Toast.LENGTH_LONG).show()
+    }
     // The account whose calendars should arrive soon, and what to tell when they do not
     var waitingFor by remember { mutableStateOf<String?>(null) }
     var syncMissing by remember { mutableStateOf(false) }
@@ -212,7 +218,7 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
                 onRemove = { removing = it },
                 onAddAccount = {
                     closeDrawer()
-                    accountPicker.launch(chooseAccountIntent())
+                    addingAccount = true
                 },
                 onNewCalendar = {
                     closeDrawer()
@@ -281,6 +287,32 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
                 }
             }
         }
+    }
+
+    if (addingAccount) {
+        AlertDialog(
+            onDismissRequest = { addingAccount = false },
+            title = { Text("Přidat účet") },
+            text = {
+                Text(
+                    "Účet z telefonu: v seznamu ho vyber a potvrď tlačítkem OK dole, samotné klepnutí ho jen označí.",
+                )
+            },
+            confirmButton = {
+                Column(horizontalAlignment = Alignment.End) {
+                    TextButton(onClick = {
+                        addingAccount = false
+                        if (calendarSyncMissing(context, GOOGLE_ACCOUNT)) syncMissing = true
+                        else runCatching { newAccount.launch(addGoogleAccountIntent()) }
+                    }) { Text("Nový Google účet") }
+                    TextButton(onClick = {
+                        addingAccount = false
+                        accountPicker.launch(chooseAccountIntent())
+                    }) { Text("Účet, který už je v telefonu") }
+                    TextButton(onClick = { addingAccount = false }) { Text("Zrušit") }
+                }
+            },
+        )
     }
 
     removing?.let { calendar ->
