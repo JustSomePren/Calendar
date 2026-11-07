@@ -302,8 +302,10 @@ private fun DaySheet(
 ) {
     val context = LocalContext.current
     var events by remember { mutableStateOf(emptyList<CalendarEvent>()) }
+    var photos by remember { mutableStateOf(emptyMap<CalendarEvent, Int>()) }
     LaunchedEffect(day, refreshTick) {
         events = withContext(Dispatchers.IO) { repository.eventsByDay(day, day, hidden, important)[day].orEmpty() }
+        photos = withContext(Dispatchers.IO) { photoCounts(context, events) }
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -319,7 +321,7 @@ private fun DaySheet(
             }
             LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(events) { event ->
-                    EventRow(event, onClick = { context.startActivity(openEventIntent(context, event)) })
+                    EventRow(event, photos[event], onClick = { context.startActivity(openEventIntent(context, event)) })
                 }
             }
 
@@ -334,7 +336,7 @@ private fun DaySheet(
 }
 
 @Composable
-private fun EventRow(event: CalendarEvent, onClick: () -> Unit) {
+private fun EventRow(event: CalendarEvent, photos: Int?, onClick: () -> Unit) {
     val timeFormat = DateTimeFormatter.ofPattern("HH:mm")
     val zone = ZoneId.systemDefault()
     val time = if (event.allDay) {
@@ -351,9 +353,17 @@ private fun EventRow(event: CalendarEvent, onClick: () -> Unit) {
     ) {
         Spacer(Modifier.width(4.dp).height(36.dp).background(Color(event.color), RoundedCornerShape(2.dp)))
         Spacer(Modifier.width(12.dp))
-        Column {
+        Column(Modifier.weight(1f)) {
             Text(event.label, style = MaterialTheme.typography.bodyLarge)
             Text(time, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        // Photos from the Galerie app; the event detail shows them too
+        if (photos != null) {
+            val context = LocalContext.current
+            val vacation = Settings(context).vacation(event.eventId) != null
+            TextButton(onClick = { GalleryLink.open(context, event.title, GalleryLink.window(event, vacation)) }) {
+                Text(photosLabel(photos))
+            }
         }
     }
 }

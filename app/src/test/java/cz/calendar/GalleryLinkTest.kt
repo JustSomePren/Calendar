@@ -99,6 +99,23 @@ class GalleryLinkTest {
     }
 
     @Test
+    fun monthViewEventUsesTheSameWindowAsTheEditor() {
+        val start = day.atTime(18, 0)
+        val draft = EventDraft(calendarId = 1, start = start, end = start.plusHours(4))
+        val event = CalendarEvent(1, 1, "Oslava", draft.startMillis(), draft.endMillis(), allDay = false, multiDay = false, color = 0)
+        assertEquals(GalleryLink.window(draft), GalleryLink.window(event, vacation = false))
+
+        val trip = EventDraft(calendarId = 1, start = day.atStartOfDay(), end = day.plusDays(6).atStartOfDay(), allDay = true)
+        val allDay = CalendarEvent(2, 1, "Chorvatsko", trip.startMillis(), trip.endMillis(), allDay = true, multiDay = true, color = 0)
+        assertEquals(GalleryLink.window(trip), GalleryLink.window(allDay, vacation = true))
+    }
+
+    @Test
+    fun photoCountReadsInCzech() {
+        assertEquals(listOf("1 fotka", "3 fotky", "5 fotek", "21 fotek"), listOf(1, 3, 5, 21).map(::photosLabel))
+    }
+
+    @Test
     fun otherAppsGetNothing() {
         addTrip()
         val provider = Robolectric.buildContentProvider(LinkProvider::class.java).create().get()

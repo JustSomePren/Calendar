@@ -1,5 +1,6 @@
 package cz.calendar
 
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
@@ -69,7 +70,8 @@ fun VacationSection(vacation: Vacation?, title: String, accounts: List<String>, 
     }
 }
 
-private class Found(val count: Int, val thumbs: List<Bitmap>, val place: Pair<Double, Double>?)
+// count is null when the gallery did not answer
+private class Found(val count: Int?, val thumbs: List<Bitmap>, val place: Pair<Double, Double>?)
 
 // Photos the gallery paired with the event, plus where they were taken
 @Composable
@@ -82,14 +84,20 @@ fun EventPhotos(draft: EventDraft, onUseLocation: ((String) -> Unit)?) {
     LaunchedEffect(window) {
         found = withContext(Dispatchers.IO) {
             val ids = GalleryLink.photos(context, window)
-            val place = if (ids.isEmpty()) null else GalleryLink.place(context, window)
-            Found(ids.size, ids.take(10).mapNotNull { GalleryLink.thumbnail(context, it) }, place)
+            val place = if (ids.isNullOrEmpty()) null else GalleryLink.place(context, window)
+            Found(ids?.size, ids.orEmpty().take(10).mapNotNull { GalleryLink.thumbnail(context, it) }, place)
         }
     }
-    val photos = found?.takeIf { it.count > 0 } ?: return
+    SectionTitle("Fotky" + (found?.count?.takeIf { it > 0 }?.let { " ($it)" } ?: ""))
+    val photos = found
+    when {
+        photos == null -> Hint("Hledám fotky v Galerii…")
+        photos.count == null -> Hint("Galerie fotky nepředala. Otevři jednou Galerii a povol jí přístup k fotkám.")
+        photos.count == 0 -> Hint("Z doby události nejsou žádné fotky (snímky obrazovky se nepočítají).")
+    }
+    if (photos?.count == null || photos.count == 0) return
     val open = { GalleryLink.open(context, draft.title.ifBlank { "Událost" }, window) }
 
-    SectionTitle("Fotky (${photos.count})")
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         photos.thumbs.forEach {
             Image(
@@ -111,4 +119,19 @@ fun EventPhotos(draft: EventDraft, onUseLocation: ((String) -> Unit)?) {
         }) { Text("Na mapě") }
         if (onUseLocation != null) TextButton(onClick = { onUseLocation(coordinates) }) { Text("Použít") }
     }
+}
+
+// Photo counts of the events that already started, empty without the gallery
+fun photoCounts(context: Context, events: List<CalendarEvent>): Map<CalendarEvent, Int> {
+    if (!GalleryLink.installed(context)) return emptyMap()
+    val settings = Settings(context)
+    val past = events.filter { it.begin <= System.currentTimeMillis() }
+    val counts = GalleryLink.counts(context, past.map { GalleryLink.window(it, settings.vacation(it.eventId) != null) })
+    return past.zip(counts.orEmpty()).toMap().filterValues { it > 0 }
+}
+
+fun photosLabel(count: Int) = when {
+    count == 1 -> "1 fotka"
+    count in 2..4 -> "$count fotky"
+    else -> "$count fotek"
 }

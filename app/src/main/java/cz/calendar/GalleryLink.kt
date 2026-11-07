@@ -33,14 +33,20 @@ object GalleryLink {
     fun isGallery(context: Context, pkg: String?) =
         pkg == PACKAGE && context.packageManager.hasSigningCertificate(pkg, CERT.chunked(2).map { it.toInt(16).toByte() }.toByteArray(), PackageManager.CERT_INPUT_SHA256)
 
-    fun accounts(context: Context): List<String> = query(context, "accounts") { it.getString(0) }
+    fun accounts(context: Context): List<String> = query(context, "accounts") { it.getString(0) }.orEmpty()
 
-    // Ids of the photos taken in the window, oldest first
-    fun photos(context: Context, window: Pair<Long, Long>): List<Long> = query(context, "photos", window) { it.getLong(0) }
+    // Ids of the photos taken in the window, oldest first. Null when the gallery did not answer.
+    fun photos(context: Context, window: Pair<Long, Long>): List<Long>? =
+        query(context, "photos", windowParams(window)) { it.getLong(0) }
+
+    // How many photos each window has, in one call. Null when the gallery did not answer.
+    fun counts(context: Context, windows: List<Pair<Long, Long>>): List<Int>? =
+        if (windows.isEmpty()) emptyList()
+        else query(context, "counts", mapOf("windows" to windows.joinToString(",") { "${it.first}-${it.second}" })) { it.getInt(0) }
 
     // Where the photos were taken, if they have a GPS position
     fun place(context: Context, window: Pair<Long, Long>): Pair<Double, Double>? =
-        query(context, "place", window) { it.getDouble(0) to it.getDouble(1) }.firstOrNull()
+        query(context, "place", windowParams(window)) { it.getDouble(0) to it.getDouble(1) }?.firstOrNull()
 
     fun thumbnail(context: Context, photoId: Long): Bitmap? = runCatching {
         context.contentResolver.openInputStream(uri("thumb/$photoId"))?.use(BitmapFactory::decodeStream)
@@ -71,17 +77,26 @@ object GalleryLink {
         }
     }
 
+    // The same for an event in the month view, which has no draft
+    fun window(event: CalendarEvent, vacation: Boolean): Pair<Long, Long> {
+        if (!event.allDay && !vacation) return event.begin - BEFORE.toMillis() to event.end + AFTER.toMillis()
+        val zone = ZoneId.systemDefault()
+        val days = eventDays(event.begin, event.end, if (event.allDay) ZoneOffset.UTC else zone)
+        return days.start.atStartOfDay(zone).toInstant().toEpochMilli() to
+            days.endInclusive.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+    }
+
     private fun uri(path: String) = Uri.parse("content://$AUTHORITY/$path")
 
-    private fun <T> query(context: Context, path: String, window: Pair<Long, Long>? = null, read: (Cursor) -> T): List<T> {
-        val uri = uri(path).buildUpon().apply {
-            if (window != null) appendQueryParameter("from", "${window.first}").appendQueryParameter("to", "${window.second}")
-        }.build()
+    private fun windowParams(window: Pair<Long, Long>) = mapOf("from" to "${window.first}", "to" to "${window.second}")
+
+    private fun <T> query(context: Context, path: String, params: Map<String, String> = emptyMap(), read: (Cursor) -> T): List<T>? {
+        val uri = uri(path).buildUpon().apply { params.forEach { (key, value) -> appendQueryParameter(key, value) } }.build()
         return runCatching {
             context.contentResolver.query(uri, null, null, null, null)?.use { c ->
                 buildList { while (c.moveToNext()) add(read(c)) }
             }
-        }.getOrNull().orEmpty()
+        }.getOrNull()
     }
 }
 
