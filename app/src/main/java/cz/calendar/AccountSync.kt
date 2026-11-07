@@ -23,10 +23,14 @@ fun syncPickedAccount(data: Intent?): Account? {
 
     ContentResolver.setIsSyncable(account, CalendarContract.AUTHORITY, 1)
     ContentResolver.setSyncAutomatically(account, CalendarContract.AUTHORITY, true)
+    requestCalendarSync(account)
+    return account
+}
+
+fun requestCalendarSync(account: Account) {
     val now = Bundle().apply {
         putBoolean(ContentResolver.SYNC_EXTRAS_MANUAL, true)
         putBoolean(ContentResolver.SYNC_EXTRAS_EXPEDITED, true)
     }
     ContentResolver.requestSync(account, CalendarContract.AUTHORITY, now)
-    return account
 }

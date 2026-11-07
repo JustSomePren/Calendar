@@ -35,6 +35,7 @@ class FakeCalendarProvider : ContentProvider() {
             account: String = "ja@gmail.com",
             // Differs from the account for a colleague's calendar shared with me
             owner: String = account,
+            synced: Boolean = true,
         ) {
             calendars += mutableMapOf(
                 Calendars._ID to id,
@@ -44,7 +45,8 @@ class FakeCalendarProvider : ContentProvider() {
                 Calendars.CALENDAR_COLOR to color,
                 Calendars.CALENDAR_ACCESS_LEVEL to if (writable) Calendars.CAL_ACCESS_OWNER else Calendars.CAL_ACCESS_READ,
                 Calendars.IS_PRIMARY to if (id == 1L) 1 else 0,
-                Calendars.SYNC_EVENTS to 1,
+                Calendars.SYNC_EVENTS to if (synced) 1 else 0,
+                Calendars.ACCOUNT_TYPE to "com.google",
             )
         }
 
@@ -74,7 +76,7 @@ class FakeCalendarProvider : ContentProvider() {
                 }
                 else -> events
             }
-            "attendees" -> attendees.filter { it[Attendees.EVENT_ID].toString() == args?.first() }
+            "attendees" -> attendees.filter { it[Attendees.EVENT_ID].toString() in args.orEmpty() }
             else -> emptyList()
         }
         val cursor = MatrixCursor(projection)
@@ -104,6 +106,11 @@ class FakeCalendarProvider : ContentProvider() {
         val map = values!!.keySet().associateWith { values.get(it) }.toMutableMap()
         return when (uri.pathSegments.first()) {
             "events" -> ContentUris.withAppendedId(Events.CONTENT_URI, addEvent(map))
+            "calendars" -> {
+                val id = (calendars.maxOfOrNull { it[Calendars._ID] as Long } ?: 0L) + 1
+                calendars += (map + (Calendars._ID to id)).toMutableMap()
+                ContentUris.withAppendedId(Calendars.CONTENT_URI, id)
+            }
             "exception" -> {
                 val original = event(uri.lastPathSegment!!.toLong())
                 val copy = original - Events._ID - Events.RRULE - Events.DURATION + map +
@@ -119,6 +126,11 @@ class FakeCalendarProvider : ContentProvider() {
     }
 
     override fun update(uri: Uri, values: ContentValues?, selection: String?, args: Array<out String>?): Int {
+        if (uri.pathSegments.first() == "calendars") {
+            val calendar = calendars.first { it[Calendars._ID] == uri.lastPathSegment!!.toLong() }
+            values!!.keySet().forEach { calendar[it] = values.get(it) }
+            return 1
+        }
         val event = event(uri.lastPathSegment!!.toLong())
         values!!.keySet().forEach { event[it] = values.get(it) }
         return 1

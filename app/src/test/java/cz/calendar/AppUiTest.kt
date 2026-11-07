@@ -49,19 +49,16 @@ class AppUiTest {
     fun monthShowsEvent() {
         ActivityScenario.launch(MainActivity::class.java).use {
             compose.waitUntil(15_000) { compose.onAllNodesWithText("Zubař").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithText(monthTitle(java.time.YearMonth.now())).assertIsDisplayed()
+            compose.onNodeWithText(java.time.YearMonth.now().format(java.time.format.DateTimeFormatter.ofPattern("LLLL", czech)).capitalized()).assertIsDisplayed()
         }
     }
 
     @Test
-    fun dayFromWidgetOpensDayPanel() {
-        val intent = Intent(ApplicationProvider.getApplicationContext(), MainActivity::class.java)
-            .putExtra(EXTRA_DAY, today.toString())
-        ActivityScenario.launch<MainActivity>(intent).use {
-            compose.waitUntil(15_000) { compose.onAllNodesWithText("Přidat událost").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithText("09:00 – 10:00").assertExists()
-            // Panel row plus the month grid (the pager also keeps the neighbouring month ready)
-            assertTrue(compose.onAllNodesWithText("Zubař").fetchSemanticsNodes().size >= 2)
+    fun dayFromWidgetOpensDayDetail() {
+        val intent = dayIntent(ApplicationProvider.getApplicationContext(), today)
+        ActivityScenario.launch<DayActivity>(intent).use {
+            compose.waitUntil(15_000) { compose.onAllNodesWithText("09:00 – 10:00").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Zubař").assertExists()
         }
     }
 

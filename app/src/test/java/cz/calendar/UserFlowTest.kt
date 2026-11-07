@@ -6,6 +6,7 @@ import android.content.Intent
 import android.provider.CalendarContract.Events
 import android.widget.TextView
 import androidx.compose.ui.test.ComposeTimeoutException
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
@@ -19,6 +20,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
@@ -44,6 +46,10 @@ import java.time.ZoneId
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = "w411dp-h914dp")
 class UserFlowTest {
+
+    private fun monthName(month: java.time.YearMonth) =
+        month.format(java.time.format.DateTimeFormatter.ofPattern("LLLL", czech)).capitalized()
+
 
     @get:Rule
     val compose = createEmptyComposeRule()
@@ -187,10 +193,9 @@ class UserFlowTest {
     @Test
     fun dayPanelShowsDatesOfLongEvents() {
         addEvent("Konference Brno", mapOf(Events.DTSTART to at(9, today.minusDays(1)), Events.DTEND to at(17, today.plusDays(1))))
-        val intent = Intent(app, MainActivity::class.java).putExtra(EXTRA_DAY, today.toString())
         val format = java.time.format.DateTimeFormatter.ofPattern("d. M.")
 
-        ActivityScenario.launch<MainActivity>(intent).use {
+        ActivityScenario.launch<DayActivity>(dayIntent(app, today)).use {
             waitForText("Konference Brno")
             waitForText("${today.minusDays(1).format(format)} 09:00 – ${today.plusDays(1).format(format)} 17:00")
         }
@@ -217,14 +222,35 @@ class UserFlowTest {
     }
 
     @Test
-    fun busyDayKeepsAddButtonInDayPanel() {
-        for (i in 0 until 16) addEvent("Schůzka $i", mapOf(Events.DTSTART to at(6) + i * 1800_000L, Events.DTEND to at(6) + (i + 1) * 1800_000L))
-        val intent = Intent(app, MainActivity::class.java).putExtra(EXTRA_DAY, today.toString())
+    fun dayDetailListsDozensOfEvents() {
+        for (i in 0 until 40) addEvent("Schůzka $i", mapOf(Events.DTSTART to at(6) + i * 900_000L, Events.DTEND to at(6) + (i + 1) * 900_000L))
 
-        ActivityScenario.launch<MainActivity>(intent).use {
-            waitForText("Schůzka 0")
-            val button = compose.onNode(hasClickAction() and hasText("Přidat událost")).fetchSemanticsNode()
-            assertTrue(button.boundsInWindow.height > 0f)
+        ActivityScenario.launch<DayActivity>(dayIntent(app, today)).use {
+            waitForText("40 událostí")
+            compose.onNodeWithContentDescription("Přidat událost").assertIsDisplayed()
+            // The list builds rows only as they scroll in
+            val list = androidx.compose.ui.test.hasScrollToNodeAction() and
+                androidx.compose.ui.test.SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange)
+            compose.onNode(list).performScrollToNode(hasText("Schůzka 39"))
+            compose.onNodeWithText("Schůzka 39").assertIsDisplayed()
+        }
+    }
+
+    @Test
+    fun dayDetailGroupsPersonalThenMyWorkThenWorkThenRest() {
+        settings.setCategory(2, Category.WORK)
+        FakeCalendarProvider.addCalendar(3, "Svátky")
+        settings.setCategory(3, Category.QUIET)
+        addEvent("Svátek", mapOf(Events.CALENDAR_ID to 3L, Events.DTSTART to at(7)))
+        addEvent("Cizí porada", mapOf(Events.CALENDAR_ID to 2L, Events.ORGANIZER to "sef@firma.cz", Events.DTSTART to at(8)))
+        addEvent("Moje porada", mapOf(Events.CALENDAR_ID to 2L, Events.ORGANIZER to "ja@firma.cz", Events.DTSTART to at(11)))
+        addEvent("Oběd", mapOf(Events.DTSTART to at(12), Events.DTEND to at(13)))
+
+        ActivityScenario.launch<DayActivity>(dayIntent(app, today)).use {
+            waitForText("Oběd")
+            val order = listOf("Osobní", "Oběd", "Pracovní – týká se mě", "Moje porada", "Pracovní", "Cizí porada", "Ostatní", "Svátek")
+            val tops = order.map { text -> compose.onNodeWithText(text, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top }
+            assertEquals(tops.sorted(), tops)
         }
     }
 
@@ -242,20 +268,6 @@ class UserFlowTest {
             waitFor { FakeCalendarProvider.event(changed)[Events.STATUS] == Events.STATUS_CANCELED }
         }
         assertEquals("FREQ=WEEKLY", FakeCalendarProvider.event(series)[Events.RRULE])
-    }
-
-    @Test
-    fun rotationDoesNotReopenDayFromWidget() {
-        addEvent("Zubař")
-        val intent = Intent(app, MainActivity::class.java).putExtra(EXTRA_DAY, today.plusMonths(3).toString())
-
-        ActivityScenario.launch<MainActivity>(intent).use { scenario ->
-            waitForText("Přidat událost")
-            scenario.recreate()
-            waitForText(monthTitle(java.time.YearMonth.now().plusMonths(3)))
-            compose.waitForIdle()
-            assertTrue(compose.onAllNodesWithText("Přidat událost").fetchSemanticsNodes().isEmpty())
-        }
     }
 
     @Test
@@ -355,28 +367,26 @@ class UserFlowTest {
         settings.hiddenCalendars = setOf(2L)
 
         ActivityScenario.launch(MainActivity::class.java).use {
-            waitForText(monthTitle(java.time.YearMonth.now()))
+            waitForText(monthName(java.time.YearMonth.now()))
             compose.waitForIdle()
             assertTrue(compose.onAllNodesWithText("Tajná věc").fetchSemanticsNodes().isEmpty())
         }
     }
 
     @Test
-    fun tapEventInDayPanelOpensEditor() {
+    fun tapEventInDayDetailOpensEditor() {
         val id = addEvent("Zubař")
-        val intent = Intent(app, MainActivity::class.java).putExtra(EXTRA_DAY, today.toString())
 
-        ActivityScenario.launch<MainActivity>(intent).use { scenario ->
+        ActivityScenario.launch<DayActivity>(dayIntent(app, today)).use { scenario ->
             waitForText("09:00 – 10:00")
-            // Robolectric does not pass touches into the bottom sheet window, so click via accessibility
-            compose.onNodeWithText("09:00 – 10:00").performSemanticsAction(SemanticsActions.OnClick)
+            compose.onNodeWithText("09:00 – 10:00").performClick()
             scenario.onActivity { activity ->
                 val started = Shadows.shadowOf(activity).nextStartedActivity
                 assertEquals(EventEditActivity::class.java.name, started.component?.className)
                 assertEquals(id, started.getLongExtra(EXTRA_EVENT_ID, -1))
             }
 
-            compose.onNode(hasClickAction() and hasText("Přidat událost")).performSemanticsAction(SemanticsActions.OnClick)
+            compose.onNodeWithContentDescription("Přidat událost").performClick()
             scenario.onActivity { activity ->
                 val started = Shadows.shadowOf(activity).nextStartedActivity
                 assertEquals(EventEditActivity::class.java.name, started.component?.className)
@@ -467,7 +477,7 @@ class UserFlowTest {
         try {
             ActivityScenario.launch(MainActivity::class.java).use {
                 val before = LocalDate.now()
-                waitForText(monthTitle(java.time.YearMonth.now()))
+                waitForText(monthName(java.time.YearMonth.now()))
                 java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Pacific/Pago_Pago"))
                 app.sendBroadcast(Intent(Intent.ACTION_TIMEZONE_CHANGED))
                 val after = LocalDate.now()
@@ -493,7 +503,7 @@ class UserFlowTest {
         val to = java.time.YearMonth.now().atDay(12)
 
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            waitForText(monthTitle(java.time.YearMonth.now()))
+            waitForText(monthName(java.time.YearMonth.now()))
             // The pager keeps the next months ready off screen, use the day numbers that are visible
             val width = compose.onRoot().fetchSemanticsNode().size.width
             fun center(day: LocalDate) = compose.onAllNodesWithText(day.dayOfMonth.toString(), useUnmergedTree = true)
@@ -536,7 +546,7 @@ class UserFlowTest {
     @Test
     fun withAccessAppWatchesCalendar() {
         ActivityScenario.launch(MainActivity::class.java).use {
-            waitForText(monthTitle(java.time.YearMonth.now()))
+            waitForText(monthName(java.time.YearMonth.now()))
             val observers = Shadows.shadowOf(app.contentResolver).getContentObservers(android.provider.CalendarContract.CONTENT_URI)
             assertTrue(observers.isNotEmpty())
         }

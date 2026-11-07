@@ -83,7 +83,7 @@ class SettingsActivity : ComponentActivity() {
 private fun SettingsScreen(repository: CalendarRepository, settings: Settings, onClose: () -> Unit) {
     var calendars by remember { mutableStateOf(emptyList<CalendarInfo>()) }
     LaunchedEffect(Unit) {
-        calendars = withContext(Dispatchers.IO) { repository.calendars() }
+        calendars = withContext(Dispatchers.IO) { repository.calendars().filter { it.synced } }
     }
 
     Scaffold(
@@ -236,7 +236,7 @@ private fun ImportSection(calendars: List<CalendarInfo>, repository: CalendarRep
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    val calendarId = chosen ?: defaultImportCalendar(repository.calendars().filter { it.writable }, settings)
+                    val calendarId = chosen ?: defaultImportCalendar(repository.calendars().filter { it.writable && it.synced }, settings)
                         ?: error("No calendar to import into")
                     val events = uris.flatMap { uri ->
                         context.contentResolver.openInputStream(uri)?.use { parseIcs(it.reader().readText()) }.orEmpty()

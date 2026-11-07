@@ -28,7 +28,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import java.time.LocalDate
 
 private val calendarPermissions = arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
 
@@ -47,8 +46,6 @@ fun CalendarApp(
     repository: CalendarRepository,
     settings: Settings,
     refreshTick: Int,
-    openDay: LocalDate?,
-    onOpenDayHandled: () -> Unit,
 ) {
     val context = LocalContext.current
     var hasPermission by remember { mutableStateOf(context.hasCalendarAccess()) }
@@ -70,7 +67,7 @@ fun CalendarApp(
 
     Surface(Modifier.fillMaxSize()) {
         if (hasPermission) {
-            MonthScreen(repository, settings, refreshTick, openDay, onOpenDayHandled)
+            MonthScreen(repository, settings, refreshTick)
         } else {
             Column(
                 Modifier.fillMaxSize().padding(32.dp),

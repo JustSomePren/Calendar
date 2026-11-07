@@ -18,19 +18,14 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
-import java.time.LocalDate
 
 class MainActivity : ComponentActivity() {
 
     // Bumped whenever calendar data may have changed, screens reload on it
     private val refreshTick = mutableIntStateOf(0)
     private var hadAccess = false
-
-    // Day tapped in the widget, shown once the month screen is ready
-    private val openDay = mutableStateOf<LocalDate?>(null)
 
     private val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
         override fun onChange(selfChange: Boolean) {
@@ -41,22 +36,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        // After a rotation the day from the widget was already shown
-        if (savedInstanceState == null) openDay.value = intent.dayExtra()
         kotlin.concurrent.thread { repairIds(this) }
 
         val repository = CalendarRepository(contentResolver)
         val settings = Settings(this)
         setContent {
             CalendarTheme {
-                CalendarApp(repository, settings, refreshTick.intValue, openDay.value) { openDay.value = null }
+                CalendarApp(repository, settings, refreshTick.intValue)
             }
         }
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        openDay.value = intent.dayExtra()
     }
 
     // Resumed also after the permission dialog, so access granted there is picked up at once.

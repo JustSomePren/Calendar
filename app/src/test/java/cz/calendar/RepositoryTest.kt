@@ -5,6 +5,7 @@ import android.provider.CalendarContract.Events
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -30,6 +31,55 @@ class RepositoryTest {
         val calendars = repository.calendars()
         assertEquals(listOf("Osobní", "Svátky"), calendars.map { it.name })
         assertEquals(listOf(true, false), calendars.map { it.writable })
+    }
+
+    @Test
+    fun listsCalendarsNotSyncedYetAndSwitchesThemOn() {
+        FakeCalendarProvider.addCalendar(3, "Tým", account = "ja@firma.cz", synced = false)
+
+        val team = repository.calendars().single { it.name == "Tým" }
+        assertEquals(false, team.synced)
+
+        repository.startSyncing(team)
+        assertEquals(true, repository.calendars().single { it.name == "Tým" }.synced)
+        val account = android.accounts.Account("ja@firma.cz", "com.google")
+        assertTrue(org.robolectric.shadows.ShadowContentResolver.getStatus(account, android.provider.CalendarContract.AUTHORITY).syncRequests > 0)
+    }
+
+    @Test
+    fun createsCalendarKeptOnlyOnPhone() {
+        val id = repository.createLocalCalendar("Domácnost", 0xFFE67C73.toInt())
+
+        val calendar = repository.calendars().single { it.id == id }
+        assertEquals("Domácnost", calendar.name)
+        assertEquals(LOCAL_ACCOUNT, calendar.account)
+        assertTrue(calendar.local && calendar.writable && calendar.synced)
+    }
+
+    @Test
+    fun ordersDayByPersonalThenMyWorkThenWorkThenRest() {
+        FakeCalendarProvider.addCalendar(3, "Práce", account = "ja@firma.cz")
+        FakeCalendarProvider.addCalendar(4, "Svátky")
+        val categories = mapOf(3L to Category.WORK, 4L to Category.QUIET)
+        val ranking = Ranking({ categories[it] ?: Category.PERSONAL }, { false }, listOf("ja@firma.cz"), listOf("testProjekt"))
+        fun add(title: String, calendar: Long, hour: Int, extra: Map<String, Any?> = emptyMap()) = FakeCalendarProvider.addEvent(
+            mapOf(
+                Events.CALENDAR_ID to calendar, Events.TITLE to title, Events.ALL_DAY to 0,
+                Events.DTSTART to day.atTime(hour, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                Events.DTEND to day.atTime(hour + 1, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+            ) + extra
+        )
+        add("Svátek", 4, 6)
+        add("Cizí", 3, 7, mapOf(Events.ORGANIZER to "sef@firma.cz"))
+        val invited = add("Pozvánka", 3, 9, mapOf(Events.ORGANIZER to "sef@firma.cz"))
+        FakeCalendarProvider.attendees += mutableMapOf(
+            Attendees.EVENT_ID to invited, Attendees.ATTENDEE_EMAIL to "ja@firma.cz", Attendees.ATTENDEE_STATUS to Attendees.ATTENDEE_STATUS_ACCEPTED,
+        )
+        add("Sprint testProjekt", 3, 8, mapOf(Events.ORGANIZER to "sef@firma.cz"))
+        add("Oběd", 1, 12)
+
+        val titles = repository.eventsByDay(day, day, emptySet(), ranking = ranking).getValue(day).map { it.title }
+        assertEquals(listOf("Oběd", "Sprint testProjekt", "Pozvánka", "Cizí", "Svátek"), titles)
     }
 
     @Test

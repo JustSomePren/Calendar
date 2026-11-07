@@ -23,7 +23,23 @@ data class CalendarInfo(
     val color: Int,
     val writable: Boolean,
     val primary: Boolean,
+    // Off for calendars of an account that the phone does not sync yet
+    val synced: Boolean = true,
+    val accountType: String = "",
+) {
+    val local: Boolean
+        get() = accountType == android.provider.CalendarContract.ACCOUNT_TYPE_LOCAL
+}
+
+// What orders events within a day, see eventRank
+class Ranking(
+    val category: (Long) -> Category,
+    val isCreated: (Long) -> Boolean,
+    val emails: List<String>,
+    val keywords: List<String>,
 )
+
+fun Settings.ranking() = Ranking(::category, ::isCreated, workEmails, workKeywords)
 
 data class CalendarEvent(
     val eventId: Long,
@@ -35,6 +51,10 @@ data class CalendarEvent(
     val multiDay: Boolean,
     val color: Int,
     val important: Boolean = false,
+    val rank: Int = 0,
+    val organizer: String = "",
+    val location: String = "",
+    val description: String = "",
 )
 
 data class Attendee(val email: String, val status: Int) {
@@ -50,6 +70,8 @@ data class Attendee(val email: String, val status: Int) {
         }
 }
 
+const val LOCAL_ACCOUNT = "Tento telefon"
+
 class CalendarRepository(private val resolver: ContentResolver) {
 
     fun calendars(): List<CalendarInfo> {
@@ -60,8 +82,11 @@ class CalendarRepository(private val resolver: ContentResolver) {
             Calendars.CALENDAR_COLOR,
             Calendars.CALENDAR_ACCESS_LEVEL,
             Calendars.IS_PRIMARY,
+            Calendars.SYNC_EVENTS,
+            Calendars.ACCOUNT_TYPE,
         )
-        return query(Calendars.CONTENT_URI, projection, "${Calendars.SYNC_EVENTS} = 1", sortOrder = Calendars.ACCOUNT_NAME) { c ->
+        // Also calendars the phone does not sync yet, e.g. a work calendar added in Google Calendar on the web
+        return query(Calendars.CONTENT_URI, projection, sortOrder = Calendars.ACCOUNT_NAME) { c ->
             CalendarInfo(
                 id = c.getLong(0),
                 name = c.getString(1).orEmpty(),
@@ -69,8 +94,43 @@ class CalendarRepository(private val resolver: ContentResolver) {
                 color = c.getInt(3),
                 writable = c.getInt(4) >= Calendars.CAL_ACCESS_CONTRIBUTOR,
                 primary = c.getInt(5) == 1,
+                synced = c.getInt(6) == 1,
+                accountType = c.getString(7).orEmpty(),
             )
         }
+    }
+
+    // Apps may switch a calendar's sync on; then ask the account to sync so its events come in
+    fun startSyncing(calendar: CalendarInfo) {
+        resolver.update(
+            ContentUris.withAppendedId(Calendars.CONTENT_URI, calendar.id),
+            contentValuesOf(Calendars.SYNC_EVENTS to 1, Calendars.VISIBLE to 1),
+            null,
+            null,
+        )
+        if (!calendar.local) requestCalendarSync(android.accounts.Account(calendar.account, calendar.accountType))
+    }
+
+    // A calendar kept only on this phone, for use without any account
+    fun createLocalCalendar(name: String, color: Int): Long {
+        val asOwner = Calendars.CONTENT_URI.buildUpon()
+            .appendQueryParameter(android.provider.CalendarContract.CALLER_IS_SYNCADAPTER, "true")
+            .appendQueryParameter(Calendars.ACCOUNT_NAME, LOCAL_ACCOUNT)
+            .appendQueryParameter(Calendars.ACCOUNT_TYPE, android.provider.CalendarContract.ACCOUNT_TYPE_LOCAL)
+            .build()
+        val values = contentValuesOf(
+            Calendars.ACCOUNT_NAME to LOCAL_ACCOUNT,
+            Calendars.ACCOUNT_TYPE to android.provider.CalendarContract.ACCOUNT_TYPE_LOCAL,
+            Calendars.NAME to name,
+            Calendars.CALENDAR_DISPLAY_NAME to name,
+            Calendars.CALENDAR_COLOR to color,
+            Calendars.CALENDAR_ACCESS_LEVEL to Calendars.CAL_ACCESS_OWNER,
+            Calendars.OWNER_ACCOUNT to LOCAL_ACCOUNT,
+            Calendars.CALENDAR_TIME_ZONE to ZoneId.systemDefault().id,
+            Calendars.VISIBLE to 1,
+            Calendars.SYNC_EVENTS to 1,
+        )
+        return ContentUris.parseId(resolver.insert(asOwner, values) ?: error("Insert failed"))
     }
 
     fun eventsByDay(
@@ -78,6 +138,7 @@ class CalendarRepository(private val resolver: ContentResolver) {
         to: LocalDate,
         hidden: Set<Long>,
         important: Set<Long> = emptySet(),
+        ranking: Ranking? = null,
     ): Map<LocalDate, List<CalendarEvent>> {
         val zone = ZoneId.systemDefault()
         val projection = arrayOf(
@@ -89,9 +150,13 @@ class CalendarRepository(private val resolver: ContentResolver) {
             Instances.ALL_DAY,
             Instances.DISPLAY_COLOR,
             Instances.ORIGINAL_ID,
+            Instances.ORGANIZER,
+            Instances.EVENT_LOCATION,
+            Instances.DESCRIPTION,
         )
 
         val result = HashMap<LocalDate, MutableList<CalendarEvent>>()
+        val all = mutableListOf<CalendarEvent>()
         instances(from, to, projection) { c ->
             if (c.getLong(1) in hidden) return@instances
 
@@ -107,7 +172,11 @@ class CalendarRepository(private val resolver: ContentResolver) {
                 multiDay = days.endInclusive > days.start,
                 color = c.getInt(6),
                 important = c.getLong(0) in important || (!c.isNull(7) && c.getLong(7) in important),
+                organizer = c.getString(8).orEmpty(),
+                location = c.getString(9).orEmpty(),
+                description = c.getString(10).orEmpty(),
             )
+            all += event
 
             var day = maxOf(days.start, from)
             while (day <= days.endInclusive && day <= to) {
@@ -116,10 +185,40 @@ class CalendarRepository(private val resolver: ContentResolver) {
             }
         }
 
+        val ranks = ranking?.let { rank(all, it) }.orEmpty()
         return result.mapValues { (_, events) ->
-            events.sortedWith(compareByDescending<CalendarEvent> { it.allDay || it.multiDay }.thenBy { it.begin })
+            events.map { it.copy(rank = ranks[it.eventId to it.begin] ?: 0) }
+                .sortedWith(compareBy<CalendarEvent> { it.rank }.thenByDescending { it.allDay || it.multiDay }.thenBy { it.begin })
         }
     }
+
+    private fun rank(events: List<CalendarEvent>, ranking: Ranking): Map<Pair<Long, Long>, Int> {
+        val accounts = calendars().associate { it.id to it.account }
+        val work = events.filter { ranking.category(it.calendarId) == Category.WORK }.map { it.eventId }.distinct()
+        val attendees = if (ranking.emails.isEmpty() || work.isEmpty()) emptyMap() else attendeesOf(work)
+        return events.associate { event ->
+            val upcoming = UpcomingEvent(
+                eventId = event.eventId, calendarId = event.calendarId, title = event.title, location = event.location,
+                description = event.description, organizer = event.organizer, account = accounts[event.calendarId].orEmpty(),
+                begin = event.begin, end = event.end, allDay = event.allDay,
+            )
+            val mine = upcoming.isMine || ranking.isCreated(event.eventId)
+            (event.eventId to event.begin) to eventRank(ranking.category(event.calendarId), mine) {
+                matchesWorkFilter(upcoming, attendees[event.eventId].orEmpty(), ranking.emails, ranking.keywords)
+            }
+        }
+    }
+
+    // Attendees of many events in one query
+    private fun attendeesOf(eventIds: List<Long>): Map<Long, List<Attendee>> =
+        eventIds.chunked(500).flatMap { chunk ->
+            query(
+                Attendees.CONTENT_URI,
+                arrayOf(Attendees.EVENT_ID, Attendees.ATTENDEE_EMAIL, Attendees.ATTENDEE_STATUS),
+                "${Attendees.EVENT_ID} IN (${chunk.joinToString(",") { "?" }})",
+                chunk.map { it.toString() }.toTypedArray(),
+            ) { c -> c.getLong(0) to Attendee(c.getString(1).orEmpty(), c.getInt(2)) }
+        }.groupBy({ it.first }, { it.second })
 
     fun upcoming(from: LocalDate, to: LocalDate): List<UpcomingEvent> {
         val projection = arrayOf(

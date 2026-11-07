@@ -60,6 +60,12 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -117,41 +123,41 @@ private fun rowOffset(row: Int, scale: Float) = dayHeader(scale) + rowHeight(sca
 val CalendarEvent.label: String
     get() = if (important) "! $title" else title
 
+// Saturday in blue and Sunday in red, as Samsung Calendar shows them
+@Composable
+fun weekendColor(day: DayOfWeek): Color? = when (day) {
+    DayOfWeek.SATURDAY -> if (isSystemInDarkTheme()) Color(0xFF8AB4F8) else Color(0xFF1A62C9)
+    DayOfWeek.SUNDAY -> MaterialTheme.colorScheme.error
+    else -> null
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MonthScreen(
-    repository: CalendarRepository,
-    settings: Settings,
-    refreshTick: Int,
-    openDay: LocalDate?,
-    onOpenDayHandled: () -> Unit,
-) {
+fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick: Int) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val pagerState = rememberPagerState(initialPage = START_PAGE) { START_PAGE * 2 }
+    // Bumped here when the menu changes calendars, refreshTick comes from the activity
+    var changes by remember { mutableIntStateOf(0) }
 
     // Visibility and priorities change in other screens, so read them again on every refresh
     var hidden by remember(refreshTick) { mutableStateOf(settings.hiddenCalendars) }
     var calendars by remember { mutableStateOf(emptyList<CalendarInfo>()) }
-    LaunchedEffect(refreshTick) {
+    LaunchedEffect(refreshTick, changes) {
         calendars = withContext(Dispatchers.IO) { repository.calendars() }
-    }
-    val drawerState = rememberDrawerState(DrawerValue.Closed)
-    val accountPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        val account = syncPickedAccount(result.data) ?: return@rememberLauncherForActivityResult
-        Toast.makeText(context, "Kalendáře účtu ${account.name} se synchronizují, za chvíli se objeví.", Toast.LENGTH_LONG).show()
     }
     val important = remember(refreshTick) { settings.eventsWithPriority(Priority.HIGH) }
     // Read again on every refresh, so "today" moves after midnight
     val today = remember(refreshTick) { LocalDate.now() }
-    var selectedDay by remember { mutableStateOf<LocalDate?>(null) }
-
-    LaunchedEffect(openDay) {
-        openDay ?: return@LaunchedEffect
-        pagerState.scrollToPage(pageForDay(openDay))
-        selectedDay = openDay
-        onOpenDayHandled()
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    var newCalendar by remember { mutableStateOf(false) }
+    val accountPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val account = syncPickedAccount(result.data) ?: return@rememberLauncherForActivityResult
+        Toast.makeText(context, "Kalendáře účtu ${account.name} se synchronizují, za chvíli se objeví.", Toast.LENGTH_LONG).show()
+        changes++
     }
+
+    fun closeDrawer() = scope.launch { drawerState.close() }
 
     // Swiping would fight with paging through months, so the menu opens from its button only
     ModalNavigationDrawer(
@@ -161,17 +167,31 @@ fun MonthScreen(
             CalendarDrawer(
                 calendars = calendars,
                 hidden = hidden,
-                onToggle = { id ->
-                    hidden = if (id in hidden) hidden - id else hidden + id
-                    settings.hiddenCalendars = hidden
-                },
-                onOpen = { intent ->
-                    scope.launch { drawerState.close() }
-                    context.startActivity(intent)
+                onToggle = { calendar ->
+                    if (!calendar.synced) {
+                        // A calendar the phone does not sync yet: switch it on and show it
+                        hidden = hidden - calendar.id
+                        settings.hiddenCalendars = hidden
+                        scope.launch {
+                            withContext(Dispatchers.IO) { repository.startSyncing(calendar) }
+                            changes++
+                        }
+                    } else {
+                        hidden = if (calendar.id in hidden) hidden - calendar.id else hidden + calendar.id
+                        settings.hiddenCalendars = hidden
+                    }
                 },
                 onAddAccount = {
-                    scope.launch { drawerState.close() }
+                    closeDrawer()
                     accountPicker.launch(chooseAccountIntent())
+                },
+                onNewCalendar = {
+                    closeDrawer()
+                    newCalendar = true
+                },
+                onSettings = {
+                    closeDrawer()
+                    context.startActivity(Intent(context, SettingsActivity::class.java))
                 },
             )
         },
@@ -179,21 +199,19 @@ fun MonthScreen(
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(monthTitle(monthForPage(pagerState.currentPage))) },
+                    title = { MonthTitle(monthForPage(pagerState.currentPage)) },
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
                             Icon(Icons.Default.Menu, contentDescription = "Kalendáře a účty")
                         }
                     },
                     actions = {
-                        TextButton(onClick = { scope.launch { pagerState.animateScrollToPage(START_PAGE) } }) {
-                            Text("Dnes")
-                        }
+                        TodayButton(today) { scope.launch { pagerState.animateScrollToPage(START_PAGE) } }
                     },
                 )
             },
             floatingActionButton = {
-                FloatingActionButton(onClick = { context.startActivity(newEventIntent(context, LocalDate.now())) }) {
+                FloatingActionButton(onClick = { context.startActivity(newEventIntent(context, LocalDate.now())) }, shape = CircleShape) {
                     Icon(Icons.Default.Add, contentDescription = "Nová událost")
                 }
             },
@@ -204,8 +222,10 @@ fun MonthScreen(
                     val month = monthForPage(page)
                     val days = remember(month) { gridDays(month) }
                     var events by remember { mutableStateOf(emptyMap<LocalDate, List<CalendarEvent>>()) }
-                    LaunchedEffect(month, refreshTick, hidden) {
-                        events = withContext(Dispatchers.IO) { repository.eventsByDay(days.first(), days.last(), hidden, important) }
+                    LaunchedEffect(month, refreshTick, hidden, changes) {
+                        events = withContext(Dispatchers.IO) {
+                            repository.eventsByDay(days.first(), days.last(), hidden, important, settings.ranking())
+                        }
                     }
                     var photos by remember { mutableStateOf(emptyMap<LocalDate, ImageBitmap>()) }
                     LaunchedEffect(month, refreshTick) {
@@ -223,7 +243,7 @@ fun MonthScreen(
                         events = events,
                         photos = photos,
                         today = today,
-                        onDayClick = { selectedDay = it },
+                        onDayClick = { context.startActivity(dayIntent(context, it)) },
                         // Holding a day alone starts a usual event, dragging over more days an all-day one
                         onRangeSelected = { from, to ->
                             context.startActivity(newEventIntent(context, from, to.takeIf { it != from }))
@@ -234,21 +254,62 @@ fun MonthScreen(
         }
     }
 
-    selectedDay?.let { day ->
-        DaySheet(day, repository, hidden, important, refreshTick, onDismiss = { selectedDay = null })
+    if (newCalendar) {
+        NewCalendarDialog(
+            onDismiss = { newCalendar = false },
+            onCreate = { name, color ->
+                newCalendar = false
+                scope.launch {
+                    withContext(Dispatchers.IO) { repository.createLocalCalendar(name, color) }
+                    changes++
+                }
+            },
+        )
+    }
+}
+
+// Big month name with the year next to it
+@Composable
+private fun MonthTitle(month: YearMonth) {
+    Row(verticalAlignment = Alignment.Bottom) {
+        Text(
+            month.format(DateTimeFormatter.ofPattern("LLLL", czech)).capitalized(),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            month.year.toString(),
+            Modifier.padding(bottom = 2.dp),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+// Today's date in a small box, jumps back to the current month
+@Composable
+private fun TodayButton(today: LocalDate, onClick: () -> Unit) {
+    IconButton(onClick = onClick, modifier = Modifier.semantics { contentDescription = "Dnes" }) {
+        Box(
+            Modifier.size(26.dp).border(1.5.dp, MaterialTheme.colorScheme.onSurface, RoundedCornerShape(6.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(today.dayOfMonth.toString(), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        }
     }
 }
 
 @Composable
 private fun WeekdayHeader() {
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         weekdays.forEachIndexed { index, name ->
             Text(
                 name,
                 Modifier.weight(1f),
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.labelMedium,
-                color = if (index == 6) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = weekendColor(DayOfWeek.of(index + 1)) ?: MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -304,7 +365,7 @@ private fun MonthGrid(
             },
     ) {
         days.chunked(7).forEach { week ->
-            HorizontalDivider()
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
             WeekRow(week, month, events, photos, today, range, onDayClick, Modifier.weight(1f))
         }
     }
@@ -372,7 +433,14 @@ private fun DayCell(
 ) {
     val scale = LocalDensity.current.fontScale
     val pickedColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-    Box(modifier.background(if (picked) pickedColor else Color.Transparent).alpha(if (inMonth) 1f else 0.4f)) {
+    val gridColor = MaterialTheme.colorScheme.outlineVariant
+    Box(
+        modifier
+            .background(if (picked) pickedColor else Color.Transparent)
+            // Thin line between days, like a paper calendar
+            .drawBehind { drawLine(gridColor, Offset(size.width, 0f), Offset(size.width, size.height), 0.5.dp.toPx()) }
+            .alpha(if (inMonth) 1f else 0.4f),
+    ) {
         if (photo != null) {
             Image(photo, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             // Faded, so the day number and events stay readable
@@ -404,8 +472,7 @@ private fun DayNumber(day: LocalDate, isToday: Boolean, modifier: Modifier) {
         fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
         color = when {
             isToday -> colors.onPrimary
-            day.dayOfWeek == DayOfWeek.SUNDAY -> colors.error
-            else -> colors.onSurface
+            else -> weekendColor(day.dayOfWeek) ?: colors.onSurface
         },
     )
 }
@@ -422,10 +489,12 @@ private fun EventChip(event: CalendarEvent, startsHere: Boolean, endsHere: Boole
             .height(16.dp * LocalDensity.current.fontScale)
             .padding(start = if (startsHere) 1.dp else 0.dp, end = if (endsHere) 1.dp else 0.dp)
             .background(
-                if (filled) color else color.copy(alpha = 0.2f),
+                if (filled) color else color.copy(alpha = 0.15f),
                 RoundedCornerShape(topStart = start, bottomStart = start, topEnd = end, bottomEnd = end),
             )
-            .padding(horizontal = 2.dp),
+            // Timed events get a colour stripe on the left, all-day ones are filled
+            .drawBehind { if (!filled) drawRect(color, size = Size(2.dp.toPx(), size.height)) }
+            .padding(start = if (filled) 2.dp else 4.dp, end = 2.dp),
         style = chipStyle,
         color = eventTextColor(event, MaterialTheme.colorScheme.onSurface),
         // Cut at the cell edge instead of wrapping, so "! Zubař" does not shrink to "!"
@@ -433,89 +502,4 @@ private fun EventChip(event: CalendarEvent, startsHere: Boolean, endsHere: Boole
         maxLines = 1,
         overflow = TextOverflow.Clip,
     )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun DaySheet(
-    day: LocalDate,
-    repository: CalendarRepository,
-    hidden: Set<Long>,
-    important: Set<Long>,
-    refreshTick: Int,
-    onDismiss: () -> Unit,
-) {
-    val context = LocalContext.current
-    var events by remember { mutableStateOf(emptyList<CalendarEvent>()) }
-    var photos by remember { mutableStateOf(emptyMap<CalendarEvent, Int>()) }
-    LaunchedEffect(day, refreshTick) {
-        events = withContext(Dispatchers.IO) { repository.eventsByDay(day, day, hidden, important)[day].orEmpty() }
-        photos = withContext(Dispatchers.IO) { photoCounts(context, events) }
-    }
-
-    // Opens fully, so the add button under a long list is on screen
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
-            Text(
-                day.format(DateTimeFormatter.ofPattern("EEEE d. MMMM", czech)).capitalized(),
-                style = MaterialTheme.typography.titleLarge,
-            )
-            Spacer(Modifier.height(12.dp))
-
-            if (events.isEmpty()) {
-                Text("Žádné události", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            // Leaves room for the add button below even on a busy day
-            LazyColumn(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                items(events) { event ->
-                    EventRow(event, photos[event], onClick = { context.startActivity(openEventIntent(context, event)) })
-                }
-            }
-
-            Spacer(Modifier.height(12.dp))
-            TextButton(onClick = { context.startActivity(newEventIntent(context, day)) }) {
-                Icon(Icons.Default.Add, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Přidat událost")
-            }
-        }
-    }
-}
-
-@Composable
-private fun EventRow(event: CalendarEvent, photos: Int?, onClick: () -> Unit) {
-    val zone = ZoneId.systemDefault()
-    val days = eventDays(event.begin, event.end, if (event.allDay) ZoneOffset.UTC else zone)
-    val dateFormat = DateTimeFormatter.ofPattern("d. M.")
-    // Events running over several days show the dates, not just the hours
-    val timeFormat = DateTimeFormatter.ofPattern(if (event.multiDay) "d. M. HH:mm" else "HH:mm")
-    val time = when {
-        event.allDay && event.multiDay -> "Celý den, ${days.start.format(dateFormat)} – ${days.endInclusive.format(dateFormat)}"
-        event.allDay -> "Celý den"
-        else -> {
-            val begin = Instant.ofEpochMilli(event.begin).atZone(zone).format(timeFormat)
-            val end = Instant.ofEpochMilli(event.end).atZone(zone).format(timeFormat)
-            "$begin – $end"
-        }
-    }
-
-    Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Spacer(Modifier.width(4.dp).height(36.dp).background(Color(event.color), RoundedCornerShape(2.dp)))
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(event.label, style = MaterialTheme.typography.bodyLarge)
-            Text(time, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        // Photos from the Galerie app; the event detail shows them too
-        if (photos != null) {
-            val context = LocalContext.current
-            val vacation = Settings(context).vacation(event.eventId) != null
-            TextButton(onClick = { GalleryLink.open(context, event.title, GalleryLink.window(event, vacation)) }) {
-                Text(photosLabel(photos))
-            }
-        }
-    }
 }
