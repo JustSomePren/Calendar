@@ -21,6 +21,8 @@ import com.github.takahirom.roborazzi.captureScreenRoboImage
 import kotlinx.coroutines.runBlocking
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performClick
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -156,6 +158,16 @@ class ScreenshotTour {
         Intent(app, MainActivity::class.java).putExtra(EXTRA_DAY, today.toString()),
         wholeScreen = true,
     )
+
+    @Test
+    fun drawer() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            settle("Zubař")
+            compose.onNodeWithContentDescription("Kalendáře a účty").performClick()
+            settle("Přidat účet")
+            scenario.onActivity { it.window.decorView.captureRoboImage("build/shots/13_drawer.png") }
+        }
+    }
 
     @Test
     fun newEvent() = shot<EventEditActivity>("04_editor_new", "Nová událost", editor())

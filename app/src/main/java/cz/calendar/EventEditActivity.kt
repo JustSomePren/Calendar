@@ -70,6 +70,7 @@ class EventEditActivity : ComponentActivity() {
         val eventId = intent.getLongExtra(EXTRA_EVENT_ID, -1).takeIf { it >= 0 }
         val instanceBegin = intent.getLongExtra(EXTRA_INSTANCE_BEGIN, -1).takeIf { it >= 0 }
         val day = intent.dayExtra() ?: LocalDate.now()
+        val endDay = intent.getStringExtra(EXTRA_END_DAY)?.let(LocalDate::parse)
 
         setContent {
             CalendarTheme {
@@ -79,6 +80,7 @@ class EventEditActivity : ComponentActivity() {
                     eventId = eventId,
                     instanceBegin = instanceBegin,
                     day = day,
+                    endDay = endDay,
                     onClose = ::finish,
                 )
             }
@@ -106,6 +108,7 @@ private fun EventEditScreen(
     eventId: Long?,
     instanceBegin: Long?,
     day: LocalDate,
+    endDay: LocalDate?,
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -131,7 +134,10 @@ private fun EventEditScreen(
                     event.copy(priority = settings.priorityFor(eventId, series), watch = settings.watchFor(eventId, series))
                 }
             } else {
-                defaultCalendar(all, settings.lastCalendar)?.let { EventDraft.new(it.id, day) }
+                defaultCalendar(all, settings.lastCalendar)?.let { calendar ->
+                    val new = EventDraft.new(calendar.id, day)
+                    if (endDay == null) new else new.copy(allDay = true, start = day.atStartOfDay(), end = endDay.atStartOfDay())
+                }
             }
             Loaded(all, event, eventId?.let { repository.attendees(it) }.orEmpty())
         }

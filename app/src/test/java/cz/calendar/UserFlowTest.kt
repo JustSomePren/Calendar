@@ -15,7 +15,9 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
@@ -483,6 +485,52 @@ class UserFlowTest {
         } finally {
             java.util.TimeZone.setDefault(previous)
         }
+    }
+
+    @Test
+    fun holdingAndDraggingOverDaysStartsMultiDayEvent() {
+        val from = java.time.YearMonth.now().atDay(10)
+        val to = java.time.YearMonth.now().atDay(12)
+
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            waitForText(monthTitle(java.time.YearMonth.now()))
+            // The pager keeps the next months ready off screen, use the day numbers that are visible
+            val width = compose.onRoot().fetchSemanticsNode().size.width
+            fun center(day: LocalDate) = compose.onAllNodesWithText(day.dayOfMonth.toString(), useUnmergedTree = true)
+                .fetchSemanticsNodes().map { it.boundsInRoot }.first { it.width > 0f && it.left >= 0f && it.right <= width }.center
+            val start = center(from)
+            val end = center(to)
+
+            compose.onRoot().performTouchInput {
+                down(start)
+                advanceEventTime(1_000)
+                moveTo(end)
+                up()
+            }
+            scenario.onActivity { activity ->
+                val started = Shadows.shadowOf(activity).nextStartedActivity
+                assertEquals(EventEditActivity::class.java.name, started.component?.className)
+                assertEquals(from.toString(), started.getStringExtra(EXTRA_DAY))
+                assertEquals(to.toString(), started.getStringExtra(EXTRA_END_DAY))
+            }
+        }
+    }
+
+    @Test
+    fun pickedDaysSaveAsAllDayEvent() {
+        val from = today.plusDays(2)
+        val to = today.plusDays(4)
+
+        ActivityScenario.launch<EventEditActivity>(newEventIntent(app, from, to)).use {
+            waitForText("Nová událost")
+            field("Název").performTextInput("Hory")
+            compose.onNodeWithText("Uložit").performClick()
+            waitFor { FakeCalendarProvider.events.isNotEmpty() }
+        }
+        val saved = FakeCalendarProvider.events.single()
+        assertEquals(1, saved[Events.ALL_DAY])
+        assertEquals(from.atStartOfDay().toInstant(java.time.ZoneOffset.UTC).toEpochMilli(), saved[Events.DTSTART])
+        assertEquals(to.plusDays(1).atStartOfDay().toInstant(java.time.ZoneOffset.UTC).toEpochMilli(), saved[Events.DTEND])
     }
 
     @Test

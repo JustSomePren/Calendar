@@ -8,6 +8,8 @@ Zobrazuje kalendáře, které už má telefon synchronizované, tedy i všechny 
 
 - měsíc na celou obrazovku, události přímo ve dnech, vícedenní jako jeden pruh
 - listování měsíců tažením do stran, tlačítko „Dnes“, klepnutím na den jeho přehled
+- levé menu (☰): kalendáře podle účtů se zaškrtnutím, přidání účtu Google, synchronizace účtů, nastavení
+- přidržení dne a tažení přes další dny založí celodenní událost přes vybrané dny (samotné přidržení založí událost na ten den)
 - vlastní editor: název, celý den, začátek a konec, kalendář, opakování, priorita, místo, poznámka, účastníci
 - u opakované události změna nebo smazání jen jednoho výskytu, nebo celé série
 - widget na plochu s celým měsícem

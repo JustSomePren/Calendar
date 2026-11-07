@@ -25,14 +25,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -48,6 +51,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
+import androidx.compose.foundation.gestures.drag
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
@@ -56,6 +67,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
@@ -112,7 +124,12 @@ fun MonthScreen(
     val pagerState = rememberPagerState(initialPage = START_PAGE) { START_PAGE * 2 }
 
     // Visibility and priorities change in other screens, so read them again on every refresh
-    val hidden = remember(refreshTick) { settings.hiddenCalendars }
+    var hidden by remember(refreshTick) { mutableStateOf(settings.hiddenCalendars) }
+    var calendars by remember { mutableStateOf(emptyList<CalendarInfo>()) }
+    LaunchedEffect(refreshTick) {
+        calendars = withContext(Dispatchers.IO) { repository.calendars() }
+    }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
     val important = remember(refreshTick) { settings.eventsWithPriority(Priority.HIGH) }
     // Read again on every refresh, so "today" moves after midnight
     val today = remember(refreshTick) { LocalDate.now() }
@@ -125,36 +142,68 @@ fun MonthScreen(
         onOpenDayHandled()
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(monthTitle(monthForPage(pagerState.currentPage))) },
-                actions = {
-                    TextButton(onClick = { scope.launch { pagerState.animateScrollToPage(START_PAGE) } }) {
-                        Text("Dnes")
-                    }
-                    IconButton(onClick = { context.startActivity(Intent(context, SettingsActivity::class.java)) }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Nastavení")
-                    }
+    // Swiping would fight with paging through months, so the menu opens from its button only
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        gesturesEnabled = drawerState.isOpen,
+        drawerContent = {
+            CalendarDrawer(
+                calendars = calendars,
+                hidden = hidden,
+                onToggle = { id ->
+                    hidden = if (id in hidden) hidden - id else hidden + id
+                    settings.hiddenCalendars = hidden
+                },
+                onOpen = { intent ->
+                    scope.launch { drawerState.close() }
+                    context.startActivity(intent)
                 },
             )
         },
-        floatingActionButton = {
-            FloatingActionButton(onClick = { context.startActivity(newEventIntent(context, LocalDate.now())) }) {
-                Icon(Icons.Default.Add, contentDescription = "Nová událost")
-            }
-        },
-    ) { padding ->
-        Column(Modifier.padding(padding)) {
-            WeekdayHeader()
-            HorizontalPager(pagerState, Modifier.weight(1f), beyondViewportPageCount = 1) { page ->
-                val month = monthForPage(page)
-                val days = remember(month) { gridDays(month) }
-                var events by remember { mutableStateOf(emptyMap<LocalDate, List<CalendarEvent>>()) }
-                LaunchedEffect(month, refreshTick) {
-                    events = withContext(Dispatchers.IO) { repository.eventsByDay(days.first(), days.last(), hidden, important) }
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(monthTitle(monthForPage(pagerState.currentPage))) },
+                    navigationIcon = {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(Icons.Default.Menu, contentDescription = "Kalendáře a účty")
+                        }
+                    },
+                    actions = {
+                        TextButton(onClick = { scope.launch { pagerState.animateScrollToPage(START_PAGE) } }) {
+                            Text("Dnes")
+                        }
+                    },
+                )
+            },
+            floatingActionButton = {
+                FloatingActionButton(onClick = { context.startActivity(newEventIntent(context, LocalDate.now())) }) {
+                    Icon(Icons.Default.Add, contentDescription = "Nová událost")
                 }
-                MonthGrid(month, days, events, today, onDayClick = { selectedDay = it })
+            },
+        ) { padding ->
+            Column(Modifier.padding(padding)) {
+                WeekdayHeader()
+                HorizontalPager(pagerState, Modifier.weight(1f), beyondViewportPageCount = 1) { page ->
+                    val month = monthForPage(page)
+                    val days = remember(month) { gridDays(month) }
+                    var events by remember { mutableStateOf(emptyMap<LocalDate, List<CalendarEvent>>()) }
+                    LaunchedEffect(month, refreshTick, hidden) {
+                        events = withContext(Dispatchers.IO) { repository.eventsByDay(days.first(), days.last(), hidden, important) }
+                    }
+                    MonthGrid(
+                        month = month,
+                        days = days,
+                        events = events,
+                        today = today,
+                        onDayClick = { selectedDay = it },
+                        // Holding a day alone starts a usual event, dragging over more days an all-day one
+                        onRangeSelected = { from, to ->
+                            context.startActivity(newEventIntent(context, from, to.takeIf { it != from }))
+                        },
+                    )
+                }
             }
         }
     }
@@ -186,11 +235,50 @@ private fun MonthGrid(
     events: Map<LocalDate, List<CalendarEvent>>,
     today: LocalDate,
     onDayClick: (LocalDate) -> Unit,
+    onRangeSelected: (LocalDate, LocalDate) -> Unit,
 ) {
-    Column(Modifier.fillMaxSize()) {
+    val haptics = LocalHapticFeedback.current
+    // Days picked by holding one and dragging over others
+    var picked by remember { mutableStateOf<Pair<LocalDate, LocalDate>?>(null) }
+    val range = picked?.let { (a, b) -> minOf(a, b)..maxOf(a, b) }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .pointerInput(days) {
+                fun dayAt(position: Offset): LocalDate {
+                    val row = (position.y / (size.height / 6f)).toInt().coerceIn(0, 5)
+                    val col = (position.x / (size.width / 7f)).toInt().coerceIn(0, 6)
+                    return days[row * 7 + col]
+                }
+                // One detector for taps and hold-and-drag; a clickable cell would take the touch first.
+                // A quick swipe is left alone, so the pager still flips months.
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val hold = awaitLongPressOrCancellation(down.id)
+                    if (hold == null) {
+                        val up = currentEvent.changes.firstOrNull { it.id == down.id }
+                        val tapped = up != null && !up.pressed && !up.isConsumed &&
+                            (up.position - down.position).getDistance() < viewConfiguration.touchSlop
+                        if (tapped) onDayClick(dayAt(down.position))
+                        return@awaitEachGesture
+                    }
+
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    val first = dayAt(hold.position)
+                    picked = first to first
+                    val finished = drag(hold.id) { change ->
+                        change.consume()
+                        picked = first to dayAt(change.position)
+                    }
+                    if (finished) picked?.let { (a, b) -> onRangeSelected(minOf(a, b), maxOf(a, b)) }
+                    picked = null
+                }
+            },
+    ) {
         days.chunked(7).forEach { week ->
             HorizontalDivider()
-            WeekRow(week, month, events, today, onDayClick, Modifier.weight(1f))
+            WeekRow(week, month, events, today, range, onDayClick, Modifier.weight(1f))
         }
     }
 }
@@ -201,6 +289,7 @@ private fun WeekRow(
     month: YearMonth,
     events: Map<LocalDate, List<CalendarEvent>>,
     today: LocalDate,
+    range: ClosedRange<LocalDate>?,
     onDayClick: (LocalDate) -> Unit,
     modifier: Modifier,
 ) {
@@ -215,11 +304,13 @@ private fun WeekRow(
                 DayCell(
                     day = day,
                     isToday = day == today,
+                    picked = range?.contains(day) == true,
                     inMonth = YearMonth.from(day) == month,
                     singles = layout.singles[col],
                     hidden = layout.hidden[col],
                     moreRow = layout.moreRow[col],
-                    modifier = Modifier.weight(1f).fillMaxHeight().clickable { onDayClick(day) },
+                    // Taps come from the grid's gesture detector, screen readers use this action
+                    modifier = Modifier.weight(1f).fillMaxHeight().semantics { onClick(label = "Otevřít den") { onDayClick(day); true } },
                 )
             }
         }
@@ -242,6 +333,7 @@ private fun WeekRow(
 private fun DayCell(
     day: LocalDate,
     isToday: Boolean,
+    picked: Boolean,
     inMonth: Boolean,
     singles: List<Pair<Int, CalendarEvent>>,
     hidden: Int,
@@ -249,7 +341,8 @@ private fun DayCell(
     modifier: Modifier,
 ) {
     val scale = LocalDensity.current.fontScale
-    Box(modifier.alpha(if (inMonth) 1f else 0.4f)) {
+    val pickedColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+    Box(modifier.background(if (picked) pickedColor else Color.Transparent).alpha(if (inMonth) 1f else 0.4f)) {
         DayNumber(day, isToday, Modifier.align(Alignment.TopCenter))
         singles.forEach { (row, event) ->
             EventChip(event, startsHere = true, endsHere = true, modifier = Modifier.offset(y = rowOffset(row, scale)).fillMaxWidth())
