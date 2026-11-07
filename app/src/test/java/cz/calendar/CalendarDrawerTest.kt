@@ -30,8 +30,15 @@ class CalendarDrawerTest {
     fun showsCalendarsByAccountAndTogglesThem() {
         var hidden by mutableStateOf(emptySet<Long>())
         var opened: Intent? = null
+        var addAccount = 0
         compose.setContent {
-            CalendarDrawer(calendars, hidden, onToggle = { id -> hidden = if (id in hidden) hidden - id else hidden + id }, onOpen = { opened = it })
+            CalendarDrawer(
+                calendars,
+                hidden,
+                onToggle = { id -> hidden = if (id in hidden) hidden - id else hidden + id },
+                onOpen = { opened = it },
+                onAddAccount = { addAccount++ },
+            )
         }
 
         compose.onNodeWithText("ja@gmail.com").assertExists()
@@ -43,8 +50,7 @@ class CalendarDrawerTest {
         assertEquals(setOf(2L), hidden)
 
         compose.onNodeWithText("Přidat účet").performSemanticsAction(SemanticsActions.OnClick)
-        assertEquals(android.provider.Settings.ACTION_ADD_ACCOUNT, opened?.action)
-        assertEquals(listOf("com.google"), opened?.getStringArrayExtra(android.provider.Settings.EXTRA_ACCOUNT_TYPES)?.toList())
+        assertEquals(1, addAccount)
 
         compose.onNodeWithText("Účty a synchronizace").performSemanticsAction(SemanticsActions.OnClick)
         assertEquals(android.provider.Settings.ACTION_SYNC_SETTINGS, opened?.action)
@@ -52,7 +58,7 @@ class CalendarDrawerTest {
 
     @Test
     fun emptyPhoneSuggestsAddingAccount() {
-        compose.setContent { CalendarDrawer(emptyList(), emptySet(), onToggle = {}, onOpen = {}) }
+        compose.setContent { CalendarDrawer(emptyList(), emptySet(), onToggle = {}, onOpen = {}, onAddAccount = {}) }
         compose.onNodeWithText("V telefonu zatím není žádný kalendář. Přidej účet Google.").assertExists()
     }
 }
