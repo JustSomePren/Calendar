@@ -23,6 +23,7 @@ class MainActivity : ComponentActivity() {
 
     // Bumped whenever calendar data may have changed, screens reload on it
     private val refreshTick = mutableIntStateOf(0)
+    private var hadAccess = false
 
     // Day tapped in the widget, shown once the month screen is ready
     private val openDay = mutableStateOf<LocalDate?>(null)
@@ -57,8 +58,11 @@ class MainActivity : ComponentActivity() {
     // Watching the calendar without access would crash, so wait for it.
     override fun onResume() {
         super.onResume()
-        if (hasCalendarAccess()) contentResolver.registerContentObserver(CalendarContract.CONTENT_URI, true, observer)
-        BackgroundWork.start(this)
+        val access = hasCalendarAccess()
+        if (access) contentResolver.registerContentObserver(CalendarContract.CONTENT_URI, true, observer)
+        // Access that just appeared (e.g. granted in system settings) needs reminders and widget planned now
+        BackgroundWork.start(this, refreshWidget = access && !hadAccess)
+        hadAccess = access
         refreshTick.intValue++
     }
 

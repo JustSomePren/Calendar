@@ -424,6 +424,20 @@ class UserFlowTest {
     }
 
     @Test
+    fun accessAppearingOnReturnPlansReminders() {
+        // Robolectric cannot drive the permission dialog, so start with access, as on return from system
+        // settings: the first resume that has access must plan reminders right away
+        val now = System.currentTimeMillis()
+        addEvent("Zubař", mapOf(Events.DTSTART to now + 5 * 3600_000L, Events.DTEND to now + 6 * 3600_000L))
+
+        ActivityScenario.launch(MainActivity::class.java).use {
+            waitForText("Zubař")
+        }
+        val alarms = Shadows.shadowOf(app.getSystemService(AlarmManager::class.java))
+        waitFor { alarms.scheduledAlarms.any { it.getType() == AlarmManager.RTC_WAKEUP } }
+    }
+
+    @Test
     fun withAccessAppWatchesCalendar() {
         ActivityScenario.launch(MainActivity::class.java).use {
             waitForText(monthTitle(java.time.YearMonth.now()))
