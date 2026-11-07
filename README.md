@@ -8,6 +8,8 @@ Zobrazuje kalendáře, které už má telefon synchronizované, tedy i všechny 
 
 - měsíc na celou obrazovku, události přímo ve dnech, vícedenní jako jeden pruh
 - listování měsíců tažením do stran, tlačítko „Dnes“, klepnutím na den jeho přehled
+- levé menu (☰): kalendáře podle účtů se zaškrtnutím, přidání účtu Google, synchronizace účtů, nastavení
+- přidržení dne a tažení přes další dny založí celodenní událost přes vybrané dny (samotné přidržení založí událost na ten den)
 - vlastní editor: název, celý den, začátek a konec, kalendář, opakování, priorita, místo, poznámka, účastníci
 - u opakované události změna nebo smazání jen jednoho výskytu, nebo celé série
 - widget na plochu s celým měsícem
@@ -19,7 +21,7 @@ Zobrazuje kalendáře, které už má telefon synchronizované, tedy i všechny 
 V nastavení (ozubené kolo) má každý kalendář kategorii:
 
 - **Osobní** (výchozí): upozorní na všechny události
-- **Pracovní**: upozorní na události, které pořádáš ty, a na ty, kde je mezi účastníky některý z tvých e-mailů (a událost jsi neodmítl), nebo které obsahují zadané slovo (např. `testProjekt`) v názvu, poznámce či místě
+- **Pracovní**: upozorní na události, které pořádáš ty nebo jsi je vytvořil v této aplikaci, a na ty, kde je mezi účastníky některý z tvých e-mailů (a událost jsi neodmítl), nebo které obsahují zadané slovo (např. `testProjekt`) v názvu, poznámce či místě
 - **Tichý**: jen zobrazit, neupozorňovat
 
 U každé události jde v editoru kategorii přebít volbou **Upozornění**:
@@ -75,7 +77,7 @@ Aplikace si navzájem povolí přístup jen tehdy, když je ta druhá podepsaná
 
 ## Samsung Kalendář
 
-Samsung kalendář se na telefonech jiných značek synchronizovat nedá. Na telefonu Samsung události vyexportuj nebo sdílej jako soubor `.ics`, pošli si ho do telefonu a v nastavení → „Import ze Samsung Kalendáře“ ho vyber. Jde vybrat i víc souborů naráz, události, které už v kalendáři jsou, se přeskočí.
+Samsung kalendář se na telefonech jiných značek synchronizovat nedá. Na telefonu Samsung události vyexportuj nebo sdílej jako soubor `.ics` nebo `.vcs`, pošli si ho do telefonu a v nastavení → „Import ze Samsung Kalendáře“ ho vyber. Jde vybrat i víc souborů naráz, události, které už v kalendáři jsou, se přeskočí.
 
 ## Data a baterie
 
@@ -147,6 +149,8 @@ Testy běží na počítači bez telefonu (Robolectric simuluje Android i kalend
 ```
 ./gradlew testDebugUnitTest koverHtmlReportDebug
 ```
+
+Test `ScreenshotTour` uloží snímky všech obrazovek s ukázkovými daty do `app/build/shots/`.
 
 Výsledky a pokrytí kódu jsou v `app/build/reports/`, na GitHubu v Actions → Artifacts → `testy-a-pokryti`.
 

@@ -48,3 +48,4 @@ jobs:
           path: |
             app/build/reports/tests/testDebugUnitTest/
             app/build/reports/kover/htmlDebug/
+            app/build/shots/

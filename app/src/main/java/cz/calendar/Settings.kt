@@ -72,6 +72,13 @@ class Settings(context: Context) {
         edit.apply()
     }
 
+    // A changed occurrence follows its series unless it has its own choice
+    fun watchFor(eventId: Long, seriesId: Long): Watch =
+        watch(eventId).takeIf { it != Watch.AUTO || eventId == seriesId } ?: watch(seriesId)
+
+    fun priorityFor(eventId: Long, seriesId: Long): Priority =
+        priority(eventId).takeIf { it != Priority.NORMAL || eventId == seriesId } ?: priority(seriesId)
+
     fun eventsWithPriority(priority: Priority): Set<Long> =
         prefs.all.filter { (key, value) -> key.startsWith("priority_") && value == priority.name }
             .keys.map { it.removePrefix("priority_").toLong() }.toSet()
@@ -100,6 +107,10 @@ class Settings(context: Context) {
     var showPhotos: Boolean
         get() = prefs.getBoolean("show_photos", true)
         set(value) = prefs.edit().putBoolean("show_photos", value).apply()
+    // Events made in this app are mine even when the calendar becomes their organizer
+    fun markCreated(eventId: Long) = putLongSet("created_events", longSet("created_events") + eventId)
+
+    fun isCreated(eventId: Long): Boolean = eventId in longSet("created_events")
 
     var notifierStarted: Boolean
         get() = prefs.getBoolean("notifier_started", false)
@@ -113,7 +124,7 @@ class Settings(context: Context) {
     // ---- Stable keys, so settings find their calendars and events on a new phone ----
 
     val storedEventIds: Set<Long>
-        get() = idsWith(EVENT_KEYS)
+        get() = idsWith(EVENT_KEYS) + longSet("created_events")
 
     val storedCalendarIds: Set<Long>
         get() = idsWith(listOf("category_")) + hiddenCalendars + listOfNotNull(lastCalendar.takeIf { it >= 0 })
@@ -127,7 +138,10 @@ class Settings(context: Context) {
     fun setCalendarRef(calendarId: Long, key: String) = putOrRemove("ref_calendar_$calendarId", key)
 
     // Moves everything stored under the old ids to the new ones, in one go so swaps work
-    fun moveEvents(moves: Map<Long, Long>) = moveKeys(moves, EVENT_KEYS + "ref_event_")
+    fun moveEvents(moves: Map<Long, Long>) {
+        moveKeys(moves, EVENT_KEYS + "ref_event_")
+        if (moves.isNotEmpty()) putLongSet("created_events", longSet("created_events").map { moves[it] ?: it }.toSet())
+    }
 
     fun moveCalendars(moves: Map<Long, Long>) {
         moveKeys(moves, listOf("category_", "ref_calendar_"))

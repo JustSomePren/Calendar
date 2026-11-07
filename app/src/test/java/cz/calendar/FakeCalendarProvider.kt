@@ -32,12 +32,14 @@ class FakeCalendarProvider : ContentProvider() {
             name: String,
             writable: Boolean = true,
             color: Int = 0xFF039BE5.toInt(),
-            owner: String = "ja@gmail.com",
+            account: String = "ja@gmail.com",
+            // Differs from the account for a colleague's calendar shared with me
+            owner: String = account,
         ) {
             calendars += mutableMapOf(
                 Calendars._ID to id,
                 Calendars.CALENDAR_DISPLAY_NAME to name,
-                Calendars.ACCOUNT_NAME to owner,
+                Calendars.ACCOUNT_NAME to account,
                 Calendars.OWNER_ACCOUNT to owner,
                 Calendars.CALENDAR_COLOR to color,
                 Calendars.CALENDAR_ACCESS_LEVEL to if (writable) Calendars.CAL_ACCESS_OWNER else Calendars.CAL_ACCESS_READ,
@@ -64,6 +66,9 @@ class FakeCalendarProvider : ContentProvider() {
             "instances" -> instances(uri.pathSegments[2].toLong(), uri.pathSegments[3].toLong())
             "events" -> when {
                 uri.pathSegments.size > 1 -> events.filter { it[Events._ID] == uri.lastPathSegment!!.toLong() }
+                selection.orEmpty().startsWith(Events.ORIGINAL_ID) -> events.filter {
+                    it[Events.ORIGINAL_ID].toString() == args!![0] && (args.size == 1 || it[Events.ORIGINAL_INSTANCE_TIME].toString() == args[1])
+                }
                 args != null -> events.filter {
                     it[Events.CALENDAR_ID].toString() == args[0] && it[Events.TITLE] == args[1] && it[Events.DTSTART].toString() == args[2]
                 }
@@ -120,7 +125,12 @@ class FakeCalendarProvider : ContentProvider() {
     }
 
     override fun delete(uri: Uri, selection: String?, args: Array<out String>?): Int = when (uri.pathSegments.first()) {
-        "events" -> if (events.removeIf { it[Events._ID] == uri.lastPathSegment!!.toLong() }) 1 else 0
+        "events" -> when {
+            uri.pathSegments.size > 1 -> if (events.removeIf { it[Events._ID] == uri.lastPathSegment!!.toLong() }) 1 else 0
+            selection.orEmpty().startsWith(Events.ORIGINAL_ID) -> events.count { it[Events.ORIGINAL_ID].toString() == args!![0] }
+                .also { events.removeIf { it[Events.ORIGINAL_ID].toString() == args!![0] } }
+            else -> 0
+        }
         "attendees" -> if (
             attendees.removeIf {
                 it[Attendees.EVENT_ID].toString() == args!![0] && it[Attendees.ATTENDEE_EMAIL].toString().lowercase() == args[1]

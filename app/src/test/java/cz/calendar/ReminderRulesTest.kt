@@ -51,6 +51,45 @@ class ReminderRulesTest {
     }
 
     @Test
+    fun nightShiftIsNotMultiDay() {
+        val shift = timed(22).copy(end = millis(day.plusDays(1).atTime(6, 0)))
+        assertEquals(listOf(day.atTime(21, 30)), times(reminderTimes(shift, Priority.NORMAL, zone)))
+        assertEquals("Zítra v 22:00", whenText(shift, millis(day.minusDays(1).atTime(20, 0)), zone))
+    }
+
+    @Test
+    fun highPriorityTripRemindsBeforeDeparture() {
+        val trip = timed(6).copy(end = millis(day.plusDays(2).atTime(20, 0)))
+
+        assertEquals(
+            listOf(
+                day.minusDays(3).atTime(18, 0),
+                day.minusDays(1).atTime(18, 0),
+                day.minusDays(1).atTime(20, 0),
+                day.atTime(4, 0),
+            ),
+            times(reminderTimes(trip, Priority.HIGH, zone)),
+        )
+    }
+
+    @Test
+    fun dayLongShiftOverDaylightSavingNightIsMultiDay() {
+        val march = UpcomingEvent(
+            eventId = 1, calendarId = 1, title = "Služba 24h",
+            begin = millis(LocalDateTime.of(2027, 3, 27, 7, 0)), end = millis(LocalDateTime.of(2027, 3, 28, 7, 0)),
+        )
+        assertEquals(
+            listOf(LocalDateTime.of(2027, 3, 24, 18, 0), LocalDateTime.of(2027, 3, 26, 18, 0)),
+            times(reminderTimes(march, Priority.NORMAL, zone)),
+        )
+
+        val october = march.copy(
+            begin = millis(LocalDateTime.of(2026, 10, 24, 7, 0)), end = millis(LocalDateTime.of(2026, 10, 25, 6, 30)),
+        )
+        assertFalse(october.isMultiDay(zone))
+    }
+
+    @Test
     fun allDayRemindsTheDayBefore() {
         assertEquals(listOf(day.minusDays(1).atTime(18, 0)), times(reminderTimes(allDay(1), Priority.NORMAL, zone)))
     }
@@ -101,9 +140,9 @@ class ReminderRulesTest {
 
     @Test
     fun eventIsMineWhenICreatedIt() {
-        assertTrue(timed(15).copy(organizer = "Ja@Firma.cz", calendarOwner = "ja@firma.cz").isMine)
-        assertTrue(timed(15).copy(organizer = "", calendarOwner = "ja@firma.cz").isMine)
-        assertFalse(timed(15).copy(organizer = "sef@firma.cz", calendarOwner = "ja@firma.cz").isMine)
+        assertTrue(timed(15).copy(organizer = "Ja@Firma.cz", account = "ja@firma.cz").isMine)
+        assertTrue(timed(15).copy(organizer = "", account = "ja@firma.cz").isMine)
+        assertFalse(timed(15).copy(organizer = "sef@firma.cz", account = "ja@firma.cz").isMine)
     }
 
     @Test

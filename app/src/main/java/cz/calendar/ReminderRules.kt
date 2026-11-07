@@ -15,8 +15,11 @@ data class UpcomingEvent(
     val location: String = "",
     val description: String = "",
     val organizer: String = "",
-    // Account of the calendar the event is in, events organized by it are mine
-    val calendarOwner: String = "",
+    // Phone account the calendar is synced with; events it organizes are mine.
+    // Not the calendar owner, a colleague's shared calendar is owned by the colleague.
+    val account: String = "",
+    // For an occurrence changed on its own, the recurring event it came from
+    val seriesId: Long = eventId,
     val begin: Long,
     val end: Long,
     val allDay: Boolean = false,
@@ -39,10 +42,19 @@ private val morningEnds = LocalTime.of(9, 0)
  * Recurring events and low priority keep only the closest reminder.
  * High priority adds an earlier one and, for all-day events, a morning one.
  */
+// A night shift 22:00–06:00 is not multi-day, only events lasting whole days are.
+// Counted on the clock, so a 24 h shift over a daylight-saving night is still a day.
+fun UpcomingEvent.isMultiDay(zone: ZoneId): Boolean {
+    if (allDay) return end - begin > 24 * 3600_000L
+    val start = Instant.ofEpochMilli(begin).atZone(zone).toLocalDateTime()
+    val finish = Instant.ofEpochMilli(end).atZone(zone).toLocalDateTime()
+    return !finish.isBefore(start.plusDays(1))
+}
+
 fun reminderTimes(event: UpcomingEvent, priority: Priority, zone: ZoneId): List<Long> {
     val days = eventDays(event.begin, event.end, if (event.allDay) ZoneOffset.UTC else zone)
     val startDay = days.start
-    val multiDay = days.endInclusive > startDay
+    val multiDay = event.isMultiDay(zone)
     val startTime = Instant.ofEpochMilli(event.begin).atZone(zone).toLocalTime()
 
     fun at(day: LocalDate, time: LocalTime) = day.atTime(time).atZone(zone).toInstant().toEpochMilli()
@@ -58,7 +70,7 @@ fun reminderTimes(event: UpcomingEvent, priority: Priority, zone: ZoneId): List<
 
     if (event.recurring || priority == Priority.LOW) times = times.takeLast(1)
     if (priority == Priority.HIGH) {
-        times = times + if (event.allDay || multiDay) {
+        times = times + if (event.allDay) {
             listOf(at(startDay, allDayMorning))
         } else {
             listOf(minutesBefore(120), at(startDay.minusDays(1), eveningBefore))
@@ -66,12 +78,12 @@ fun reminderTimes(event: UpcomingEvent, priority: Priority, zone: ZoneId): List<
     }
 
     // All-day events may still remind on their own morning
-    val deadline = if (event.allDay || multiDay) event.end else event.begin
+    val deadline = if (event.allDay) event.end else event.begin
     return times.filter { it < deadline }.distinct().sorted()
 }
 
 val UpcomingEvent.isMine: Boolean
-    get() = organizer.isBlank() || organizer.equals(calendarOwner, ignoreCase = true)
+    get() = organizer.isBlank() || organizer.equals(account, ignoreCase = true)
 
 fun shouldNotify(category: Category, watch: Watch, mine: Boolean, matchesFilter: () -> Boolean): Boolean = when (watch) {
     Watch.ALWAYS -> true
@@ -124,7 +136,7 @@ fun whenText(event: UpcomingEvent, now: Long, zone: ZoneId): String {
     val time = Instant.ofEpochMilli(event.begin).atZone(zone).format(timeFormat)
 
     return when {
-        days.endInclusive > days.start ->
+        event.isMultiDay(zone) ->
             "${dayLabel(days.start, today)} – ${dayLabel(days.endInclusive, today).replaceFirstChar { it.lowercase() }}"
         event.allDay -> "${dayLabel(days.start, today)}, celý den"
         minutesLeft in 0..59 -> "Za $minutesLeft min, v $time"

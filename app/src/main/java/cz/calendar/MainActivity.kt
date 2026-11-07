@@ -1,6 +1,9 @@
 package cz.calendar
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.database.ContentObserver
 import android.os.Bundle
 import android.os.Handler
@@ -17,12 +20,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import java.time.LocalDate
 
 class MainActivity : ComponentActivity() {
 
     // Bumped whenever calendar data may have changed, screens reload on it
     private val refreshTick = mutableIntStateOf(0)
+    private var hadAccess = false
 
     // Day tapped in the widget, shown once the month screen is ready
     private val openDay = mutableStateOf<LocalDate?>(null)
@@ -36,17 +41,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        openDay.value = intent.dayExtra()
-        BackgroundWork.start(this)
+        // After a rotation the day from the widget was already shown
+        if (savedInstanceState == null) openDay.value = intent.dayExtra()
         kotlin.concurrent.thread { repairIds(this) }
 
         val repository = CalendarRepository(contentResolver)
         val settings = Settings(this)
         setContent {
             CalendarTheme {
-                CalendarApp(repository, settings, refreshTick.intValue, openDay.value, onAccess = ::watchCalendar) {
-                    openDay.value = null
-                }
+                CalendarApp(repository, settings, refreshTick.intValue, openDay.value) { openDay.value = null }
             }
         }
     }
@@ -56,25 +59,36 @@ class MainActivity : ComponentActivity() {
         openDay.value = intent.dayExtra()
     }
 
-    private var watching = false
-
-    // Android closes the app when it watches the calendar without access, so only once it has it
-    private fun watchCalendar() {
-        if (watching || !hasCalendarAccess()) return
-        contentResolver.registerContentObserver(CalendarContract.CONTENT_URI, true, observer)
-        watching = true
-    }
-
-    override fun onStart() {
-        super.onStart()
-        watchCalendar()
+    // Resumed also after the permission dialog, so access granted there is picked up at once.
+    // Watching the calendar without access would crash, so wait for it.
+    override fun onResume() {
+        super.onResume()
+        val access = hasCalendarAccess()
+        if (access) contentResolver.registerContentObserver(CalendarContract.CONTENT_URI, true, observer)
+        // Access that just appeared (e.g. granted in system settings) needs reminders and widget planned now
+        BackgroundWork.start(this, refreshWidget = access && !hadAccess)
+        val clock = IntentFilter().apply {
+            addAction(Intent.ACTION_DATE_CHANGED)
+            addAction(Intent.ACTION_TIME_CHANGED)
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+        }
+        // System clock broadcasts still arrive at a not exported receiver
+        ContextCompat.registerReceiver(this, clockChanged, clock, ContextCompat.RECEIVER_NOT_EXPORTED)
+        hadAccess = access
         refreshTick.intValue++
     }
 
-    override fun onStop() {
-        if (watching) contentResolver.unregisterContentObserver(observer)
-        watching = false
-        super.onStop()
+    override fun onPause() {
+        contentResolver.unregisterContentObserver(observer)
+        unregisterReceiver(clockChanged)
+        super.onPause()
+    }
+
+    // Midnight or a clock change while the app is on screen moves "today"
+    private val clockChanged = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            refreshTick.intValue++
+        }
     }
 }
 

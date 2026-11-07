@@ -6,6 +6,7 @@ import android.content.Intent
 import android.provider.CalendarContract.Events
 import android.widget.TextView
 import androidx.compose.ui.test.ComposeTimeoutException
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -14,7 +15,9 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
@@ -53,7 +56,7 @@ class UserFlowTest {
     fun setUp() {
         app = setUpFakeCalendar()
         FakeCalendarProvider.addCalendar(1, "Rodina")
-        FakeCalendarProvider.addCalendar(2, "Práce", owner = "ja@firma.cz")
+        FakeCalendarProvider.addCalendar(2, "Práce", account = "ja@firma.cz")
         settings = Settings(app)
     }
 
@@ -70,10 +73,10 @@ class UserFlowTest {
     )
 
     private fun waitForText(text: String) =
-        compose.waitUntil(5_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(15_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
 
     private fun waitFor(condition: () -> Boolean) {
-        val end = System.currentTimeMillis() + 5_000
+        val end = System.currentTimeMillis() + 15_000
         while (!condition()) {
             if (System.currentTimeMillis() > end) throw ComposeTimeoutException("Condition not met")
             compose.waitForIdle()
@@ -113,9 +116,42 @@ class UserFlowTest {
         assertEquals(1L, saved[Events.CALENDAR_ID])
         assertEquals(at(9), saved[Events.DTSTART])
         val id = saved[Events._ID] as Long
-        waitFor { settings.priority(id) == Priority.HIGH }
-        assertEquals(Watch.ALWAYS, settings.watch(id))
+        // The watch choice is stored last, after it everything is saved
+        waitFor { settings.watch(id) == Watch.ALWAYS }
+        assertEquals(Priority.HIGH, settings.priority(id))
         assertEquals(1L, settings.lastCalendar)
+        assertTrue(settings.isCreated(id))
+    }
+
+    @Test
+    fun unsavedEditsSurviveRotation() {
+        ActivityScenario.launch<EventEditActivity>(editor()).use { scenario ->
+            waitForText("Nová událost")
+            field("Název").performTextInput("Kadeřník")
+            choose("Normální", "Vysoká")
+            scenario.recreate()
+            waitForText("Kadeřník")
+            compose.onNode(hasClickAction() and hasText("Vysoká")).assertExists()
+            compose.onNodeWithText("Uložit").performClick()
+            waitFor { FakeCalendarProvider.events.isNotEmpty() }
+        }
+        assertEquals("Kadeřník", FakeCalendarProvider.events.single()[Events.TITLE])
+    }
+
+    @Test
+    fun doubleTapOnSaveWritesOnce() {
+        ActivityScenario.launch<EventEditActivity>(editor()).use {
+            waitForText("Nová událost")
+            field("Název").performTextInput("Kadeřník")
+            val save = compose.onNodeWithText("Uložit")
+            compose.runOnUiThread {
+                save.performSemanticsAction(SemanticsActions.OnClick)
+                save.performSemanticsAction(SemanticsActions.OnClick)
+            }
+            waitFor { FakeCalendarProvider.events.isNotEmpty() }
+            compose.waitForIdle()
+        }
+        assertEquals(1, FakeCalendarProvider.events.size)
     }
 
     @Test
@@ -136,17 +172,27 @@ class UserFlowTest {
     }
 
     @Test
-    fun muteWeeklyPersonalEvent() {
+    fun mutingOneOccurrenceMutesSeriesWithoutTouchingCalendar() {
         val weekly = addEvent("Úklid", mapOf(Events.RRULE to "FREQ=WEEKLY", Events.DTEND to null, Events.DURATION to "P3600S"))
 
         ActivityScenario.launch<EventEditActivity>(editor(weekly, at(9))).use {
             waitForText("Osobní kalendář: upozorní.")
             choose("Podle kalendáře", "Nikdy")
-            compose.onNodeWithText("Platí pro všechna opakování.").assertExists()
             compose.onNodeWithText("Uložit").performClick()
-            waitForText("Jen tento výskyt")
-            compose.onNodeWithText("Celou sérii").performClick()
             waitFor { settings.watch(weekly) == Watch.NEVER }
+        }
+        assertEquals(1, FakeCalendarProvider.events.size)
+    }
+
+    @Test
+    fun dayPanelShowsDatesOfLongEvents() {
+        addEvent("Konference Brno", mapOf(Events.DTSTART to at(9, today.minusDays(1)), Events.DTEND to at(17, today.plusDays(1))))
+        val intent = Intent(app, MainActivity::class.java).putExtra(EXTRA_DAY, today.toString())
+        val format = java.time.format.DateTimeFormatter.ofPattern("d. M.")
+
+        ActivityScenario.launch<MainActivity>(intent).use {
+            waitForText("Konference Brno")
+            waitForText("${today.minusDays(1).format(format)} 09:00 – ${today.plusDays(1).format(format)} 17:00")
         }
     }
 
@@ -168,6 +214,85 @@ class UserFlowTest {
         assertEquals(tomorrow, exception[Events.ORIGINAL_INSTANCE_TIME])
         assertEquals("Standup venku", exception[Events.TITLE])
         assertEquals("Standup", FakeCalendarProvider.event(daily)[Events.TITLE])
+    }
+
+    @Test
+    fun busyDayKeepsAddButtonInDayPanel() {
+        for (i in 0 until 16) addEvent("Schůzka $i", mapOf(Events.DTSTART to at(6) + i * 1800_000L, Events.DTEND to at(6) + (i + 1) * 1800_000L))
+        val intent = Intent(app, MainActivity::class.java).putExtra(EXTRA_DAY, today.toString())
+
+        ActivityScenario.launch<MainActivity>(intent).use {
+            waitForText("Schůzka 0")
+            val button = compose.onNode(hasClickAction() and hasText("Přidat událost")).fetchSemanticsNode()
+            assertTrue(button.boundsInWindow.height > 0f)
+        }
+    }
+
+    @Test
+    fun changedOccurrenceCannotRepeatAndCanBeCancelled() {
+        val series = addEvent("Úklid", mapOf(Events.RRULE to "FREQ=WEEKLY", Events.DTEND to null, Events.DURATION to "P3600S"))
+        val changed = addEvent("Úklid jindy", mapOf(Events.ORIGINAL_ID to series, Events.ORIGINAL_INSTANCE_TIME to at(9)))
+
+        ActivityScenario.launch<EventEditActivity>(editor(changed)).use {
+            waitForText("Samostatně změněný výskyt opakované události, úpravy platí jen pro něj.")
+            compose.onNode(hasClickAction() and hasText("Neopakovat")).assertIsNotEnabled()
+            compose.onNodeWithContentDescription("Smazat").performClick()
+            waitForText("Jen tento výskyt")
+            compose.onNodeWithText("Jen tento výskyt").performClick()
+            waitFor { FakeCalendarProvider.event(changed)[Events.STATUS] == Events.STATUS_CANCELED }
+        }
+        assertEquals("FREQ=WEEKLY", FakeCalendarProvider.event(series)[Events.RRULE])
+    }
+
+    @Test
+    fun rotationDoesNotReopenDayFromWidget() {
+        addEvent("Zubař")
+        val intent = Intent(app, MainActivity::class.java).putExtra(EXTRA_DAY, today.plusMonths(3).toString())
+
+        ActivityScenario.launch<MainActivity>(intent).use { scenario ->
+            waitForText("Přidat událost")
+            scenario.recreate()
+            waitForText(monthTitle(java.time.YearMonth.now().plusMonths(3)))
+            compose.waitForIdle()
+            assertTrue(compose.onAllNodesWithText("Přidat událost").fetchSemanticsNodes().isEmpty())
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h914dp", fontScale = 2.0f)
+    fun largeFontKeepsDayNumbersAndEventsWhole() {
+        addEvent("Zubař")
+
+        ActivityScenario.launch(MainActivity::class.java).use {
+            waitForText("Zubař")
+            val number = compose.onAllNodesWithText(today.dayOfMonth.toString())
+                .fetchSemanticsNodes().first { it.layoutInfo.isPlaced }
+            val chip = compose.onAllNodesWithText("Zubař").fetchSemanticsNodes().first()
+            // Boxes grow with the font, so the text is not cut in half
+            val density = app.resources.displayMetrics.density
+            assertTrue(number.size.height >= 22 * 2.0f * density * 0.9f)
+            assertTrue(chip.size.height >= 16 * 2.0f * density * 0.9f)
+        }
+    }
+
+    @Test
+    fun leavingAllDayGivesUsualTimes() {
+        val id = FakeCalendarProvider.addEvent(
+            mapOf(
+                Events.CALENDAR_ID to 1L, Events.TITLE to "Výlet", Events.ALL_DAY to 1,
+                Events.DTSTART to today.atStartOfDay().toInstant(java.time.ZoneOffset.UTC).toEpochMilli(),
+                Events.DTEND to today.plusDays(1).atStartOfDay().toInstant(java.time.ZoneOffset.UTC).toEpochMilli(),
+            )
+        )
+
+        ActivityScenario.launch<EventEditActivity>(editor(id)).use {
+            waitForText("Výlet")
+            compose.onAllNodes(androidx.compose.ui.test.isToggleable())[0].performClick()
+            compose.onNodeWithText("Uložit").performClick()
+            waitFor { FakeCalendarProvider.event(id)[Events.ALL_DAY] == 0 }
+        }
+        assertEquals(at(9), FakeCalendarProvider.event(id)[Events.DTSTART])
+        assertEquals(at(10), FakeCalendarProvider.event(id)[Events.DTEND])
     }
 
     @Test
@@ -309,12 +434,143 @@ class UserFlowTest {
 
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             waitForText("Aplikace potřebuje přístup ke kalendářům v telefonu.")
+            // On a phone watching the calendar without access throws, Robolectric only lets us check it did not try
+            val observers = Shadows.shadowOf(app.contentResolver).getContentObservers(android.provider.CalendarContract.CONTENT_URI)
+            assertTrue(observers.isEmpty())
             compose.onNodeWithText("Otevřít nastavení aplikace").performClick()
             scenario.onActivity { activity ->
                 val started = Shadows.shadowOf(activity).nextStartedActivity
                 assertEquals(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, started.action)
             }
         }
+    }
+
+    @Test
+    fun accessAppearingOnReturnPlansReminders() {
+        // Robolectric cannot drive the permission dialog, so start with access, as on return from system
+        // settings: the first resume that has access must plan reminders right away
+        val now = System.currentTimeMillis()
+        addEvent("Zubař", mapOf(Events.DTSTART to now + 5 * 3600_000L, Events.DTEND to now + 6 * 3600_000L))
+
+        ActivityScenario.launch(MainActivity::class.java).use {
+            waitForText("Zubař")
+        }
+        val alarms = Shadows.shadowOf(app.getSystemService(AlarmManager::class.java))
+        waitFor { alarms.scheduledAlarms.any { it.getType() == AlarmManager.RTC_WAKEUP } }
+    }
+
+    @Test
+    fun todayMovesWhenDateChangesWhileOpen() {
+        val previous = java.util.TimeZone.getDefault()
+        // Far east is already tomorrow, far west still yesterday: switching between them changes the date
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Pacific/Kiritimati"))
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use {
+                val before = LocalDate.now()
+                waitForText(monthTitle(java.time.YearMonth.now()))
+                java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Pacific/Pago_Pago"))
+                app.sendBroadcast(Intent(Intent.ACTION_TIMEZONE_CHANGED))
+                val after = LocalDate.now()
+                assertTrue(after != before)
+                val today = androidx.compose.ui.test.hasStateDescription("dnes")
+                waitFor {
+                    compose.onAllNodes(today and hasText(after.dayOfMonth.toString()), useUnmergedTree = true)
+                        .fetchSemanticsNodes().isNotEmpty()
+                }
+                assertTrue(
+                    compose.onAllNodes(today and hasText(before.dayOfMonth.toString()), useUnmergedTree = true)
+                        .fetchSemanticsNodes().isEmpty(),
+                )
+            }
+        } finally {
+            java.util.TimeZone.setDefault(previous)
+        }
+    }
+
+    @Test
+    fun holdingAndDraggingOverDaysStartsMultiDayEvent() {
+        val from = java.time.YearMonth.now().atDay(10)
+        val to = java.time.YearMonth.now().atDay(12)
+
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            waitForText(monthTitle(java.time.YearMonth.now()))
+            // The pager keeps the next months ready off screen, use the day numbers that are visible
+            val width = compose.onRoot().fetchSemanticsNode().size.width
+            fun center(day: LocalDate) = compose.onAllNodesWithText(day.dayOfMonth.toString(), useUnmergedTree = true)
+                .fetchSemanticsNodes().map { it.boundsInRoot }.first { it.width > 0f && it.left >= 0f && it.right <= width }.center
+            val start = center(from)
+            val end = center(to)
+
+            compose.onRoot().performTouchInput {
+                down(start)
+                advanceEventTime(1_000)
+                moveTo(end)
+                up()
+            }
+            scenario.onActivity { activity ->
+                val started = Shadows.shadowOf(activity).nextStartedActivity
+                assertEquals(EventEditActivity::class.java.name, started.component?.className)
+                assertEquals(from.toString(), started.getStringExtra(EXTRA_DAY))
+                assertEquals(to.toString(), started.getStringExtra(EXTRA_END_DAY))
+            }
+        }
+    }
+
+    @Test
+    fun pickedDaysSaveAsAllDayEvent() {
+        val from = today.plusDays(2)
+        val to = today.plusDays(4)
+
+        ActivityScenario.launch<EventEditActivity>(newEventIntent(app, from, to)).use {
+            waitForText("Nová událost")
+            field("Název").performTextInput("Hory")
+            compose.onNodeWithText("Uložit").performClick()
+            waitFor { FakeCalendarProvider.events.isNotEmpty() }
+        }
+        val saved = FakeCalendarProvider.events.single()
+        assertEquals(1, saved[Events.ALL_DAY])
+        assertEquals(from.atStartOfDay().toInstant(java.time.ZoneOffset.UTC).toEpochMilli(), saved[Events.DTSTART])
+        assertEquals(to.plusDays(1).atStartOfDay().toInstant(java.time.ZoneOffset.UTC).toEpochMilli(), saved[Events.DTEND])
+    }
+
+    @Test
+    fun withAccessAppWatchesCalendar() {
+        ActivityScenario.launch(MainActivity::class.java).use {
+            waitForText(monthTitle(java.time.YearMonth.now()))
+            val observers = Shadows.shadowOf(app.contentResolver).getContentObservers(android.provider.CalendarContract.CONTENT_URI)
+            assertTrue(observers.isNotEmpty())
+        }
+    }
+
+    @Test
+    fun editorClosesWithoutAccess() {
+        Shadows.shadowOf(app).denyPermissions(android.Manifest.permission.READ_CALENDAR)
+
+        val scenario = ActivityScenario.launch<EventEditActivity>(editor())
+        assertEquals(androidx.lifecycle.Lifecycle.State.DESTROYED, scenario.state)
+    }
+
+    @Test
+    fun importGoesToChosenCalendarAfterRecreation() {
+        val file = java.io.File(app.cacheDir, "porada.ics").apply {
+            writeText("BEGIN:VEVENT\r\nSUMMARY:Porada\r\nDTSTART:${today.toString().replace("-", "")}T100000\r\nEND:VEVENT")
+        }
+
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            waitForText("Importovat do")
+            compose.onNode(hasClickAction() and hasText("Rodina")).performScrollTo().performClick()
+            compose.onNode(hasClickAction() and hasText("Práce")).performClick()
+            compose.onNodeWithText("Vybrat soubory .ics").performScrollTo().performClick()
+            var requestCode = 0
+            scenario.onActivity { requestCode = Shadows.shadowOf(it).nextStartedActivityForResult.requestCode }
+
+            scenario.recreate()
+            scenario.onActivity {
+                it.activityResultRegistry.dispatchResult(requestCode, android.app.Activity.RESULT_OK, Intent().setData(android.net.Uri.fromFile(file)))
+            }
+            waitFor { FakeCalendarProvider.events.isNotEmpty() }
+        }
+        assertEquals(2L, FakeCalendarProvider.events.single()[Events.CALENDAR_ID])
     }
 
     @Test

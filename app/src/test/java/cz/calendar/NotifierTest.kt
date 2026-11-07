@@ -24,7 +24,7 @@ class NotifierTest {
     fun setUp() {
         app = setUpFakeCalendar()
         FakeCalendarProvider.addCalendar(1, "Osobní")
-        FakeCalendarProvider.addCalendar(2, "Práce", owner = "ja@firma.cz")
+        FakeCalendarProvider.addCalendar(2, "Práce", account = "ja@firma.cz")
         FakeCalendarProvider.addCalendar(3, "Svátky")
         settings = Settings(app)
         settings.setCategory(2, Category.WORK)
@@ -84,6 +84,120 @@ class NotifierTest {
         EventNotifier.run(app, now)
 
         assertEquals(listOf("Cizí standup", "Svátek, co chci"), shownTitles())
+    }
+
+    @Test
+    fun changedOccurrenceFollowsMutedSeries() {
+        val series = soon(1, "Úklid")
+        FakeCalendarProvider.events.single { it[Events._ID] == series }[Events.DTSTART] = now - 7 * 24 * 3600_000L
+        FakeCalendarProvider.events.single { it[Events._ID] == series }[Events.DTEND] = now - 7 * 24 * 3600_000L + 3600_000L
+        val moved = soon(1, "Úklid jindy")
+        FakeCalendarProvider.event(moved)[Events.ORIGINAL_ID] = series
+        settings.setWatch(series, Watch.NEVER)
+
+        EventNotifier.run(app, now)
+
+        assertEquals(emptyList<String>(), shownTitles())
+    }
+
+    @Test
+    fun longVacationRemindsOnlyOnce() {
+        val zone = java.time.ZoneId.systemDefault()
+        val start = java.time.LocalDate.now().plusDays(3)
+        FakeCalendarProvider.addEvent(
+            mapOf(
+                Events.CALENDAR_ID to 1L,
+                Events.TITLE to "Dovolená",
+                Events.ALL_DAY to 1,
+                Events.DTSTART to start.atStartOfDay().toInstant(java.time.ZoneOffset.UTC).toEpochMilli(),
+                Events.DTEND to start.plusDays(9).atStartOfDay().toInstant(java.time.ZoneOffset.UTC).toEpochMilli(),
+            )
+        )
+        fun at(day: java.time.LocalDate, hour: Int, minute: Int) = day.atTime(hour, minute).atZone(zone).toInstant().toEpochMilli()
+
+        EventNotifier.run(app, at(start.minusDays(3), 18, 1))
+        EventNotifier.run(app, at(start.minusDays(1), 18, 1))
+        // Over a week later, while the vacation still runs
+        EventNotifier.run(app, at(start.plusDays(6), 10, 0))
+        EventNotifier.run(app, at(start.plusDays(6), 10, 1))
+
+        val notifications = Shadows.shadowOf(app.getSystemService(NotificationManager::class.java))
+        assertEquals(1, notifications.allNotifications.size)
+        assertEquals(2, settings.firedReminders.size)
+    }
+
+    @Test
+    fun colleaguesSharedCalendarIsNotMine() {
+        FakeCalendarProvider.addCalendar(4, "Petr", account = "ja@firma.cz", owner = "petr@firma.cz")
+        settings.setCategory(4, Category.WORK)
+        soon(4, "Petrův oběd s klientem", organizer = "petr@firma.cz")
+        soon(4, "Moje schůzka v Petrově kalendáři", organizer = "ja@firma.cz")
+
+        EventNotifier.run(app, now)
+
+        assertEquals(listOf("Moje schůzka v Petrově kalendáři"), shownTitles())
+    }
+
+    @Test
+    fun muteOnChangedOccurrenceMutesWholeSeries() {
+        val series = FakeCalendarProvider.addEvent(
+            mapOf(
+                Events.CALENDAR_ID to 1L, Events.TITLE to "Úklid", Events.ALL_DAY to 0, Events.RRULE to "FREQ=WEEKLY",
+                Events.DTSTART to now - 7 * 24 * 3600_000L, Events.DURATION to "P3600S",
+            )
+        )
+        val moved = soon(1, "Úklid jindy")
+        FakeCalendarProvider.event(moved)[Events.ORIGINAL_ID] = series
+
+        EventNotifier.run(app, now)
+        val notification = Shadows.shadowOf(app.getSystemService(NotificationManager::class.java)).allNotifications.single()
+        val mute = Shadows.shadowOf(notification.actions.single().actionIntent).savedIntent
+        ReminderReceiver().onReceive(app, mute)
+
+        assertEquals(Watch.NEVER, settings.watch(series))
+    }
+
+    @Test
+    fun changedOccurrenceGetsOnlyClosestReminder() {
+        val series = FakeCalendarProvider.addEvent(
+            mapOf(
+                Events.CALENDAR_ID to 1L, Events.TITLE to "Standup", Events.ALL_DAY to 0, Events.RRULE to "FREQ=DAILY",
+                Events.DTSTART to now - 7 * 24 * 3600_000L, Events.DURATION to "P900S",
+            )
+        )
+        val moved = soon(1, "Standup jinde")
+        FakeCalendarProvider.event(moved)[Events.ORIGINAL_ID] = series
+
+        val upcoming = CalendarRepository(app.contentResolver).upcoming(java.time.LocalDate.now(), java.time.LocalDate.now().plusDays(1))
+        assertEquals(true, upcoming.single { it.eventId == moved }.recurring)
+    }
+
+    @Test
+    fun myEventInTeamCalendarIsMineAfterProviderSetsOrganizer() {
+        FakeCalendarProvider.addCalendar(5, "Tým", account = "ja@firma.cz", owner = "c_tym@group.calendar.google.com")
+        settings.setCategory(5, Category.WORK)
+        // The real provider and Google make the calendar itself the organizer
+        val mine = soon(5, "Moje porada", organizer = "c_tym@group.calendar.google.com")
+        settings.markCreated(mine)
+        soon(5, "Porada někoho jiného", organizer = "c_tym@group.calendar.google.com")
+
+        EventNotifier.run(app, now)
+
+        assertEquals(listOf("Moje porada"), shownTitles())
+    }
+
+    @Test
+    fun tappingReminderOpensItsDayOnTopOfOpenScreens() {
+        soon(1, "Zubař")
+
+        EventNotifier.run(app, now)
+
+        val notification = Shadows.shadowOf(app.getSystemService(NotificationManager::class.java)).allNotifications.single()
+        val open = Shadows.shadowOf(notification.contentIntent).savedIntent
+        val day = java.time.LocalDate.now().toString()
+        assertEquals(day, open.getStringExtra(EXTRA_DAY))
+        // Differs from the app icon intent, so an unsaved editor is not thrown away
+        assertEquals("calendar-day:$day", open.dataString)
     }
 
     @Test

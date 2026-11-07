@@ -58,9 +58,10 @@ class IcsImportTest {
 
     @Test
     fun readsSamsungExport() {
-        val events = parseIcs(samsungExport, zone)
+        val events = parseIcs(samsungExport, zone).filter { it.recurrenceId == null }.map { it.draft }
 
         assertEquals(listOf("Zubař, kontrola", "Dovolená", "Fotbal"), events.map { it.title })
+        assertEquals(listOf("Fotbal přesunut"), parseIcs(samsungExport, zone).filter { it.recurrenceId != null }.map { it.draft.title })
 
         val dentist = events[0]
         assertEquals(LocalDateTime.of(2026, 11, 10, 9, 0), dentist.start)
@@ -83,7 +84,61 @@ class IcsImportTest {
     @Test
     fun unfoldsLongLines() {
         val text = "BEGIN:VEVENT\r\nSUMMARY:Dlouhý\r\n  název\r\nDTSTART:20261110T090000\r\nEND:VEVENT"
-        assertEquals("Dlouhý název", parseIcs(text, zone).single().title)
+        assertEquals("Dlouhý název", parseIcs(text, zone).single().draft.title)
+    }
+
+    @Test
+    fun keepsSkippedAndMovedOccurrences() {
+        val text = listOf(
+            "BEGIN:VEVENT", "UID:joga", "SUMMARY:Jóga", "DTSTART:20261102T170000Z", "DTEND:20261102T180000Z",
+            "RRULE:FREQ=WEEKLY;COUNT=4", "EXDATE;TZID=Europe/Prague:20261109T180000", "END:VEVENT",
+            "BEGIN:VEVENT", "UID:joga", "RECURRENCE-ID:20261116T170000Z", "SUMMARY:Jóga",
+            "DTSTART:20261117T170000Z", "DTEND:20261117T180000Z", "END:VEVENT",
+        ).joinToString("\r\n")
+
+        val (series, moved) = parseIcs(text, zone)
+        assertEquals("20261109T170000Z", series.draft.excludedDates)
+        assertEquals("joga", moved.uid)
+        assertEquals(LocalDateTime.of(2026, 11, 16, 18, 0).atZone(zone).toInstant().toEpochMilli(), moved.recurrenceId)
+        assertEquals(LocalDateTime.of(2026, 11, 17, 18, 0), moved.draft.start)
+    }
+
+    @Test
+    fun cancelledOccurrenceIsSkippedInSeries() {
+        val text = listOf(
+            "BEGIN:VEVENT", "UID:abc", "SUMMARY:Kurz", "DTSTART;TZID=Europe/Prague:20261102T100000",
+            "DTEND;TZID=Europe/Prague:20261102T110000", "RRULE:FREQ=WEEKLY", "END:VEVENT",
+            "BEGIN:VEVENT", "UID:abc", "RECURRENCE-ID;TZID=Europe/Prague:20261109T100000", "STATUS:CANCELLED",
+            "SUMMARY:Kurz", "DTSTART;TZID=Europe/Prague:20261109T100000", "END:VEVENT",
+        ).joinToString("\r\n")
+
+        val events = parseIcs(text, zone)
+        assertEquals(1, events.size)
+        assertEquals("20261109T090000Z", events.single().draft.excludedDates)
+    }
+
+    @Test
+    fun escapedBackslashBeforeNStaysBackslash() {
+        val text = "BEGIN:VEVENT\r\nSUMMARY:Složka C:\\\\nový\\, starý\r\nDESCRIPTION:a\\nb\r\nDTSTART:20261110T090000\r\nEND:VEVENT"
+        val draft = parseIcs(text, zone).single().draft
+
+        assertEquals("Složka C:\\nový, starý", draft.title)
+        assertEquals("a\nb", draft.description)
+    }
+
+    @Test
+    fun readsSamsungVcsWithCzechCharacters() {
+        val text = listOf(
+            "BEGIN:VCALENDAR", "VERSION:1.0", "PRODID:vCal ID default", "BEGIN:VEVENT",
+            "SUMMARY;CHARSET=UTF-8;ENCODING=QUOTED-PRINTABLE:=C5=A0kola v p=C5=99=C3=ADrod=C4=9B",
+            "LOCATION;CHARSET=UTF-8;ENCODING=QUOTED-PRINTABLE:Br=C3=A1na a dlouh=C3=A1 ulice =",
+            "Praha",
+            "DTSTART:20261110T090000", "DTEND:20261110T100000", "END:VEVENT", "END:VCALENDAR",
+        ).joinToString("\r\n")
+
+        val draft = parseIcs(text, zone).single().draft
+        assertEquals("Škola v přírodě", draft.title)
+        assertEquals("Brána a dlouhá ulice Praha", draft.location)
     }
 
     @Test

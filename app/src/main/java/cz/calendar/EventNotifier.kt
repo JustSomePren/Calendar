@@ -36,12 +36,13 @@ object EventNotifier {
         // Multi-day events remind 3 days ahead, so look a bit further
         val planned = repository.upcoming(today.minusDays(1), today.plusDays(5))
             .filter { event ->
-                shouldNotify(settings.category(event.calendarId), settings.watch(event.eventId), event.isMine) {
+                val mine = event.isMine || settings.isCreated(event.seriesId)
+                shouldNotify(settings.category(event.calendarId), settings.watchFor(event.eventId, event.seriesId), mine) {
                     matchesWorkFilter(event, repository.attendees(event.eventId), emails, keywords)
                 }
             }
             .flatMap { event ->
-                val priority = settings.priority(event.eventId)
+                val priority = settings.priorityFor(event.eventId, event.seriesId)
                 reminderTimes(event, priority, zone).map { at ->
                     Planned("${event.eventId}:${event.begin}:$at", at, event, priority)
                 }
@@ -55,9 +56,11 @@ object EventNotifier {
         settings.notifierStarted = true
 
         // Forget reminders older than a week so the list stays small
+        // Forget old reminders so the list stays small, but not while their event still runs
         val weekAgo = now - 7 * 24 * 3600_000L
+        val stillPlanned = planned.map { it.key }.toSet()
         settings.firedReminders = (fired + due.map { it.key })
-            .filter { it.substringAfterLast(':').toLongOrNull()?.let { at -> at > weekAgo } == true }
+            .filter { it in stillPlanned || it.substringAfterLast(':').toLongOrNull()?.let { at -> at > weekAgo } == true }
             .toSet()
 
         scheduleNext(context, planned.filter { it.at > now }.minOfOrNull { it.at })
@@ -68,9 +71,7 @@ object EventNotifier {
         if (!context.canNotify()) return
 
         val day = eventDays(event.begin, event.end, if (event.allDay) ZoneOffset.UTC else zone).start
-        val open = Intent(context, MainActivity::class.java)
-            .putExtra(EXTRA_DAY, day.toString())
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val open = dayIntent(context, day).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val id = "${event.eventId}:${event.begin}".hashCode()
         val pending = PendingIntent.getActivity(context, id, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val text = listOf(whenText(event, now, zone), event.location).filter { it.isNotBlank() }.joinToString(" · ")
@@ -82,7 +83,7 @@ object EventNotifier {
             .setCategory(NotificationCompat.CATEGORY_EVENT)
             .setContentIntent(pending)
             .setAutoCancel(true)
-            .addAction(0, "Neupozorňovat", muteIntent(context, event.eventId, id))
+            .addAction(0, "Neupozorňovat", muteIntent(context, event.seriesId, id))
             .setWhen(event.begin)
             .setShowWhen(false)
             .build()

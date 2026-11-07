@@ -39,6 +39,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -61,9 +62,15 @@ class EventEditActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // Access may have been taken away while the app was in the background
+        if (!hasCalendarAccess()) {
+            finish()
+            return
+        }
         val eventId = intent.getLongExtra(EXTRA_EVENT_ID, -1).takeIf { it >= 0 }
         val instanceBegin = intent.getLongExtra(EXTRA_INSTANCE_BEGIN, -1).takeIf { it >= 0 }
         val day = intent.dayExtra() ?: LocalDate.now()
+        val endDay = intent.getStringExtra(EXTRA_END_DAY)?.let(LocalDate::parse)
 
         setContent {
             CalendarTheme {
@@ -73,6 +80,7 @@ class EventEditActivity : ComponentActivity() {
                     eventId = eventId,
                     instanceBegin = instanceBegin,
                     day = day,
+                    endDay = endDay,
                     onClose = ::finish,
                 )
             }
@@ -106,6 +114,7 @@ private fun EventEditScreen(
     eventId: Long?,
     instanceBegin: Long?,
     day: LocalDate,
+    endDay: LocalDate?,
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -114,23 +123,32 @@ private fun EventEditScreen(
     var loading by remember { mutableStateOf(true) }
     var calendars by remember { mutableStateOf(emptyList<CalendarInfo>()) }
     var statuses by remember { mutableStateOf(emptyList<Attendee>()) }
+    // Saved with the screen, so unsaved edits survive rotating the phone
+    var original by rememberSaveable { mutableStateOf<EventDraft?>(null) }
+    var draft by rememberSaveable { mutableStateOf<EventDraft?>(null) }
+    var showDelete by rememberSaveable { mutableStateOf(false) }
+    var showSaveChoice by rememberSaveable { mutableStateOf(false) }
+    // A second tap while saving would write the event twice
+    var saving by remember { mutableStateOf(false) }
     var galleryAccounts by remember { mutableStateOf<List<String>?>(null) }
-    var original by remember { mutableStateOf<EventDraft?>(null) }
-    var draft by remember { mutableStateOf<EventDraft?>(null) }
-    var showDelete by remember { mutableStateOf(false) }
-    var showSaveChoice by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         val loaded = withContext(Dispatchers.IO) {
             val all = repository.calendars()
             val event = if (eventId != null) {
-                repository.event(eventId, instanceBegin)?.copy(
-                    priority = settings.priority(eventId),
-                    watch = settings.watch(eventId),
-                    vacation = settings.vacation(eventId),
-                )
+                repository.event(eventId, instanceBegin)?.let { event ->
+                    val series = event.originalId ?: eventId
+                    event.copy(
+                        priority = settings.priorityFor(eventId, series),
+                        watch = settings.watchFor(eventId, series),
+                        vacation = settings.vacation(eventId),
+                    )
+                }
             } else {
-                defaultCalendar(all, settings.lastCalendar)?.let { EventDraft.new(it.id, day) }
+                defaultCalendar(all, settings.lastCalendar)?.let { calendar ->
+                    val new = EventDraft.new(calendar.id, day)
+                    if (endDay == null) new else new.copy(allDay = true, start = day.atStartOfDay(), end = endDay.atStartOfDay())
+                }
             }
             val accounts = if (GalleryLink.installed(context)) GalleryLink.accounts(context) else null
             Loaded(all, event, eventId?.let { repository.attendees(it) }.orEmpty(), accounts)
@@ -142,18 +160,25 @@ private fun EventEditScreen(
         calendars = loaded.calendars
         statuses = loaded.attendees
         galleryAccounts = loaded.galleryAccounts
-        original = loaded.draft
-        draft = loaded.draft
+        // After a rotation the restored draft holds the user's edits
+        if (draft == null) {
+            original = loaded.draft
+            draft = loaded.draft
+        }
         loading = false
     }
 
     // Runs a change on the calendar provider, then closes the editor
+    // Reminder choices stay with the opened event, for an occurrence that is its series
     fun commit(saved: EventDraft? = null, action: () -> Long?) {
+        if (saving) return
+        saving = true
         scope.launch {
             val result = withContext(Dispatchers.IO) { runCatching(action) }
             if (result.isSuccess) {
-                val savedId = result.getOrNull()
+                val savedId = saved?.let { it.originalId ?: it.id } ?: result.getOrNull()
                 if (savedId != null && saved != null) {
+                    if (saved.id == null) settings.markCreated(savedId)
                     settings.setPriority(savedId, saved.priority)
                     settings.setWatch(savedId, saved.watch)
                     settings.setVacation(savedId, saved.vacation)
@@ -165,6 +190,7 @@ private fun EventEditScreen(
                 BackgroundWork.refreshNow(context)
                 onClose()
             } else {
+                saving = false
                 Toast.makeText(context, "Změnu se nepodařilo uložit", Toast.LENGTH_LONG).show()
             }
         }
@@ -173,16 +199,25 @@ private fun EventEditScreen(
     val current = draft
     val calendar = calendars.find { it.id == current?.calendarId }
     val editable = calendar?.writable == true
-    val recurring = original?.rule != null
+    // An occurrence changed on its own has no rule but still belongs to a series
+    val changedOccurrence = original?.originalId != null
+    val recurring = original?.rule != null || changedOccurrence
     val occurrence = recurring && current?.instanceBegin != null
+    val onlyLocalChanges = current != null && current.id != null &&
+        current.copy(priority = Priority.NORMAL, watch = Watch.AUTO) == original?.copy(priority = Priority.NORMAL, watch = Watch.AUTO)
     val autoHint = current?.let { event ->
-        val upcoming = event.toUpcoming(calendar?.owner.orEmpty())
+        val upcoming = event.toUpcoming(calendar?.account.orEmpty())
         val people = event.attendees.map { email -> statuses.find { it.email.equals(email, ignoreCase = true) } ?: Attendee(email, 0) }
         val matches = matchesWorkFilter(upcoming, people, settings.workEmails, settings.workKeywords)
-        autoReminderHint(settings.category(event.calendarId), upcoming.isMine, matches)
+        val mine = upcoming.isMine || settings.isCreated(event.originalId ?: event.id ?: -1)
+        autoReminderHint(settings.category(event.calendarId), mine, matches)
     }.orEmpty()
 
     fun saveSeries(event: EventDraft) {
+        if (event.rule != null && shiftRule(event.rule, event.seriesDayShift()) == null) {
+            Toast.makeText(context, "Tahle série se opakuje podle data, celou ji na jiný den přesunout nejde. Přesuň jen tento výskyt.", Toast.LENGTH_LONG).show()
+            return
+        }
         settings.lastCalendar = event.calendarId
         commit(event) { repository.saveEvent(event) }
     }
@@ -202,10 +237,11 @@ private fun EventEditScreen(
                     }
                     if (current != null) {
                         TextButton(
-                            enabled = current.isValid,
+                            enabled = current.isValid && !saving,
                             onClick = {
                                 when {
-                                    !editable -> commit(current) { current.id }
+                                    // Only reminder choices changed, nothing to write to the calendar
+                                    !editable || onlyLocalChanges -> commit(current) { current.id }
                                     occurrence -> showSaveChoice = true
                                     else -> saveSeries(current)
                                 }
@@ -231,6 +267,7 @@ private fun EventEditScreen(
                     editable = editable,
                     canChangeCalendar = current.id == null,
                     recurring = recurring,
+                    changedOccurrence = changedOccurrence,
                     autoHint = autoHint,
                     galleryAccounts = galleryAccounts,
                     personal = settings.category(current.calendarId) == Category.PERSONAL,
@@ -274,7 +311,10 @@ private fun EventEditScreen(
                             Text("Jen tento výskyt")
                         }
                     }
-                    TextButton(onClick = { commit { repository.deleteEvent(id); null } }) {
+                    if (changedOccurrence) {
+                        TextButton(onClick = { commit { repository.cancelOccurrence(id); null } }) { Text("Jen tento výskyt") }
+                    }
+                    TextButton(onClick = { commit { repository.deleteEvent(current.originalId ?: id); null } }) {
                         Text(if (recurring) "Celou sérii" else "Smazat")
                     }
                     TextButton(onClick = { showDelete = false }) { Text("Zrušit") }
@@ -293,6 +333,7 @@ private fun EventForm(
     editable: Boolean,
     canChangeCalendar: Boolean,
     recurring: Boolean,
+    changedOccurrence: Boolean,
     autoHint: String,
     galleryAccounts: List<String>?,
     personal: Boolean,
@@ -304,6 +345,8 @@ private fun EventForm(
     ) {
         if (!editable) {
             Hint("Tento kalendář je jen pro čtení.")
+        } else if (changedOccurrence) {
+            Hint("Samostatně změněný výskyt opakované události, úpravy platí jen pro něj.")
         } else if (recurring) {
             Hint("Opakovaná událost. Při uložení vybereš, jestli změnit jen tento výskyt, nebo celou sérii.")
         }
@@ -319,7 +362,17 @@ private fun EventForm(
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Celý den", Modifier.weight(1f))
-            Switch(draft.allDay, onCheckedChange = { onChange(draft.copy(allDay = it)) }, enabled = editable)
+            Switch(
+                draft.allDay,
+                onCheckedChange = { allDay ->
+                    // Leaving all-day gives the days a usual time instead of 00:00–00:00
+                    onChange(
+                        if (allDay || !draft.allDay) draft.copy(allDay = allDay)
+                        else draft.copy(allDay = false, start = draft.start.toLocalDate().atTime(9, 0), end = draft.end.toLocalDate().atTime(10, 0)),
+                    )
+                },
+                enabled = editable,
+            )
         }
 
         DateTimeRow("Začátek", draft.start, draft.allDay, editable) { start ->
@@ -337,7 +390,10 @@ private fun EventForm(
             selected = draft.calendarId,
             enabled = editable && canChangeCalendar,
         ) { onChange(draft.copy(calendarId = it)) }
-        ChoiceRow("Opakování", repeatChoices(originalRule), draft.rule, editable) { onChange(draft.copy(rule = it)) }
+        // A single changed occurrence cannot repeat on its own
+        ChoiceRow("Opakování", repeatChoices(originalRule), draft.rule, editable && !changedOccurrence) {
+            onChange(draft.copy(rule = it))
+        }
         // Reminder settings live only in this app, so they work even for read-only calendars
         ChoiceRow("Upozornění", watchOptions, draft.watch, enabled = true) { onChange(draft.copy(watch = it)) }
         if (draft.watch == Watch.AUTO) Hint(autoHint)
@@ -381,7 +437,7 @@ private fun AttendeesSection(
     editable: Boolean,
     onChange: (List<String>) -> Unit,
 ) {
-    var newEmail by remember { mutableStateOf("") }
+    var newEmail by rememberSaveable { mutableStateOf("") }
 
     SectionTitle("Účastníci")
     emails.forEach { email ->

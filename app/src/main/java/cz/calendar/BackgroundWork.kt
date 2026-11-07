@@ -2,7 +2,6 @@ package cz.calendar
 
 import android.content.Context
 import android.provider.CalendarContract
-import androidx.glance.appwidget.updateAll
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
@@ -19,7 +18,7 @@ class RefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorke
     override suspend fun doWork(): Result {
         repairIds(applicationContext)
         EventNotifier.run(applicationContext)
-        MonthWidget().updateAll(applicationContext)
+        refreshMonthWidgets(applicationContext)
         // A synced change can move a vacation, so the gallery reads them again
         if (Settings(applicationContext).hasVacations) GalleryLink.notifyChanged(applicationContext)
         // A content trigger fires only once, so wait for the next change again
@@ -32,6 +31,8 @@ object BackgroundWork {
 
     // No periodic work: reminders and midnight use alarms, data changes use a content trigger
     fun start(context: Context, refreshWidget: Boolean = false) {
+        // Watching the calendar needs access to it
+        if (!context.hasCalendarAccess()) return
         // Earlier versions refreshed every hour
         WorkManager.getInstance(context).cancelUniqueWork("refresh-hourly")
         watch(context, ExistingWorkPolicy.KEEP)

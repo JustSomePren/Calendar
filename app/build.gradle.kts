@@ -48,6 +48,8 @@ android {
     }
     testOptions {
         unitTests.isIncludeAndroidResources = true
+        // ScreenshotTour saves pictures of every screen into build/shots
+        unitTests.all { it.systemProperty("roborazzi.test.record", "true") }
     }
 }
 
@@ -64,7 +66,9 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.32.2")
     testImplementation("androidx.test:core-ktx:1.6.1")
+    testImplementation("androidx.work:work-testing:2.10.0")
     testImplementation("androidx.test.ext:junit:1.2.1")
     testImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
