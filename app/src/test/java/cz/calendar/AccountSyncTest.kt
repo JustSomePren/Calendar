@@ -1,14 +1,17 @@
 package cz.calendar
 
 import android.accounts.Account
+import android.accounts.AccountManager
 import android.content.ContentResolver
 import android.content.Context
+import android.content.Intent
 import android.provider.CalendarContract
 import android.provider.Settings
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -29,6 +32,23 @@ class AccountSyncTest {
     }
 
     @Test
+    fun pickedAccountComesFromTheChooserResult() {
+        val picked = Intent()
+            .putExtra(AccountManager.KEY_ACCOUNT_NAME, "ja@firma.cz")
+            .putExtra(AccountManager.KEY_ACCOUNT_TYPE, GOOGLE_ACCOUNT)
+
+        assertEquals(Account("ja@firma.cz", GOOGLE_ACCOUNT), pickedAccount(picked))
+        assertNull(pickedAccount(null))
+        assertNull(pickedAccount(Intent()))
+    }
+
+    @Test
+    fun chooserOffersGoogleAccounts() {
+        val intent = chooseAccountIntent()
+        assertEquals(listOf(GOOGLE_ACCOUNT), intent.getStringArrayExtra("allowableAccountTypes")?.toList())
+    }
+
+    @Test
     fun addAccountIntentAsksThePhoneForGoogle() {
         val intent = addGoogleAccountIntent()
 
@@ -37,7 +57,7 @@ class AccountSyncTest {
     }
 
     @Test
-    fun phoneWithoutGoogleAccountsListsNone() {
+    fun phoneWithoutVisibleGoogleAccountsListsNone() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         assertTrue(googleAccounts(context).isEmpty())
     }

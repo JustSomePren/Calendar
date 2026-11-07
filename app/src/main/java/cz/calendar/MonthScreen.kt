@@ -3,6 +3,7 @@ package cz.calendar
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import android.app.Activity
 import android.content.Intent
 import android.Manifest
 import android.accounts.Account
@@ -175,15 +176,6 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
             accountsPermission.launch(Manifest.permission.GET_ACCOUNTS)
         }
     }
-    // The system add-account screen often returns cancelled even when the account was added,
-    // so afterwards every Google account on the phone gets its calendar sync switched on
-    val newAccount = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        scope.launch {
-            googleAccounts(context).forEach { runCatching { syncAccount(it) } }
-            changes++
-            Toast.makeText(context, "Po přihlášení se kalendáře nového účtu za chvíli stáhnou.", Toast.LENGTH_LONG).show()
-        }
-    }
     // The account whose calendars should arrive soon, and what to tell when they do not
     var waitingFor by remember { mutableStateOf<String?>(null) }
     var accountNote by remember { mutableStateOf<String?>(null) }
@@ -204,6 +196,43 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
             }
             changes++
         }
+    }
+    // The system chooser for accounts already on the phone; picking one also makes it visible
+    // to this app (getAccountsByType returns only visible accounts on Android 8+)
+    val accountPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val account = pickedAccount(result.data)
+        if (account != null) onAccountPicked(account)
+        changes++
+    }
+    // Fallback system add-account screen; it often returns cancelled even when the account
+    // was added, so afterwards every visible Google account gets its calendar sync switched on
+    val newAccount = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        scope.launch {
+            googleAccounts(context).forEach { runCatching { syncAccount(it) } }
+            changes++
+            Toast.makeText(context, "Po přihlášení se kalendáře nového účtu za chvíli stáhnou.", Toast.LENGTH_LONG).show()
+        }
+    }
+    fun launchSystemAddAccount() {
+        val intent = addGoogleAccountIntent()
+        if (canStart(context, intent)) {
+            newAccount.launch(intent)
+        } else {
+            Toast.makeText(
+                context,
+                "Z aplikace nejde otevřít přidání účtu – přidej Google účet v Nastavení telefonu → Hesla a účty.",
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
+    // Adds a new Google account in the app through AccountManager (Google's sign-in screen);
+    // on phones where that cannot start, falls back to the system add-account screen
+    fun addNewAccount() {
+        addingAccount = false
+        val activity = context as? Activity ?: run { launchSystemAddAccount(); return }
+        addGoogleAccount(context, activity, onResult = { account ->
+            if (account != null) onAccountPicked(account)
+        }, onFallback = { launchSystemAddAccount() })
     }
     LaunchedEffect(waitingFor) {
         val name = waitingFor ?: return@LaunchedEffect
@@ -339,7 +368,7 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
                         TextButton(onClick = { onAccountPicked(account) }, Modifier.fillMaxWidth()) { Text(account.name) }
                     }
                     if (deviceAccounts.isEmpty()) {
-                        Text("V telefonu teď není žádný Google účet – přidej ho níž.")
+                        Text("Tlačítkem níž ho vybereš v seznamu telefonu, nebo přidej úplně nový účet.")
                     }
                 }
             },
@@ -347,17 +376,9 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
                 Column(horizontalAlignment = Alignment.End) {
                     TextButton(onClick = {
                         addingAccount = false
-                        val intent = addGoogleAccountIntent()
-                        if (canStart(context, intent)) {
-                            newAccount.launch(intent)
-                        } else {
-                            Toast.makeText(
-                                context,
-                                "Z aplikace nejde otevřít přidání účtu – přidej Google účet v Nastavení telefonu → Hesla a účty.",
-                                Toast.LENGTH_LONG,
-                            ).show()
-                        }
-                    }) { Text("Nový Google účet") }
+                        accountPicker.launch(chooseAccountIntent())
+                    }) { Text("Vybrat účet v telefonu") }
+                    TextButton(onClick = { addNewAccount() }) { Text("Nový Google účet") }
                     TextButton(onClick = { addingAccount = false }) { Text("Zrušit") }
                 }
             },
