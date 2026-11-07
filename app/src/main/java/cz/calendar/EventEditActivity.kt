@@ -334,7 +334,17 @@ private fun EventForm(
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Celý den", Modifier.weight(1f))
-            Switch(draft.allDay, onCheckedChange = { onChange(draft.copy(allDay = it)) }, enabled = editable)
+            Switch(
+                draft.allDay,
+                onCheckedChange = { allDay ->
+                    // Leaving all-day gives the days a usual time instead of 00:00–00:00
+                    onChange(
+                        if (allDay || !draft.allDay) draft.copy(allDay = allDay)
+                        else draft.copy(allDay = false, start = draft.start.toLocalDate().atTime(9, 0), end = draft.end.toLocalDate().atTime(10, 0)),
+                    )
+                },
+                enabled = editable,
+            )
         }
 
         DateTimeRow("Začátek", draft.start, draft.allDay, editable) { start ->

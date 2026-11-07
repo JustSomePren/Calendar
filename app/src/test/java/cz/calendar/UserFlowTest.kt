@@ -274,6 +274,26 @@ class UserFlowTest {
     }
 
     @Test
+    fun leavingAllDayGivesUsualTimes() {
+        val id = FakeCalendarProvider.addEvent(
+            mapOf(
+                Events.CALENDAR_ID to 1L, Events.TITLE to "Výlet", Events.ALL_DAY to 1,
+                Events.DTSTART to today.atStartOfDay().toInstant(java.time.ZoneOffset.UTC).toEpochMilli(),
+                Events.DTEND to today.plusDays(1).atStartOfDay().toInstant(java.time.ZoneOffset.UTC).toEpochMilli(),
+            )
+        )
+
+        ActivityScenario.launch<EventEditActivity>(editor(id)).use {
+            waitForText("Výlet")
+            compose.onAllNodes(androidx.compose.ui.test.isToggleable())[0].performClick()
+            compose.onNodeWithText("Uložit").performClick()
+            waitFor { FakeCalendarProvider.event(id)[Events.ALL_DAY] == 0 }
+        }
+        assertEquals(at(9), FakeCalendarProvider.event(id)[Events.DTSTART])
+        assertEquals(at(10), FakeCalendarProvider.event(id)[Events.DTEND])
+    }
+
+    @Test
     fun deleteEvent() {
         val id = addEvent("Zrušená schůzka")
 
@@ -435,6 +455,34 @@ class UserFlowTest {
         }
         val alarms = Shadows.shadowOf(app.getSystemService(AlarmManager::class.java))
         waitFor { alarms.scheduledAlarms.any { it.getType() == AlarmManager.RTC_WAKEUP } }
+    }
+
+    @Test
+    fun todayMovesWhenDateChangesWhileOpen() {
+        val previous = java.util.TimeZone.getDefault()
+        // Far east is already tomorrow, far west still yesterday: switching between them changes the date
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Pacific/Kiritimati"))
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use {
+                val before = LocalDate.now()
+                waitForText(monthTitle(java.time.YearMonth.now()))
+                java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Pacific/Pago_Pago"))
+                app.sendBroadcast(Intent(Intent.ACTION_TIMEZONE_CHANGED))
+                val after = LocalDate.now()
+                assertTrue(after != before)
+                val today = androidx.compose.ui.test.hasStateDescription("dnes")
+                waitFor {
+                    compose.onAllNodes(today and hasText(after.dayOfMonth.toString()), useUnmergedTree = true)
+                        .fetchSemanticsNodes().isNotEmpty()
+                }
+                assertTrue(
+                    compose.onAllNodes(today and hasText(before.dayOfMonth.toString()), useUnmergedTree = true)
+                        .fetchSemanticsNodes().isEmpty(),
+                )
+            }
+        } finally {
+            java.util.TimeZone.setDefault(previous)
+        }
     }
 
     @Test

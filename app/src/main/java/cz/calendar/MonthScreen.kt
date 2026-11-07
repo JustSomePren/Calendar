@@ -56,6 +56,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -112,6 +114,8 @@ fun MonthScreen(
     // Visibility and priorities change in other screens, so read them again on every refresh
     val hidden = remember(refreshTick) { settings.hiddenCalendars }
     val important = remember(refreshTick) { settings.eventsWithPriority(Priority.HIGH) }
+    // Read again on every refresh, so "today" moves after midnight
+    val today = remember(refreshTick) { LocalDate.now() }
     var selectedDay by remember { mutableStateOf<LocalDate?>(null) }
 
     LaunchedEffect(openDay) {
@@ -150,7 +154,7 @@ fun MonthScreen(
                 LaunchedEffect(month, refreshTick) {
                     events = withContext(Dispatchers.IO) { repository.eventsByDay(days.first(), days.last(), hidden, important) }
                 }
-                MonthGrid(month, days, events, onDayClick = { selectedDay = it })
+                MonthGrid(month, days, events, today, onDayClick = { selectedDay = it })
             }
         }
     }
@@ -180,12 +184,13 @@ private fun MonthGrid(
     month: YearMonth,
     days: List<LocalDate>,
     events: Map<LocalDate, List<CalendarEvent>>,
+    today: LocalDate,
     onDayClick: (LocalDate) -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
         days.chunked(7).forEach { week ->
             HorizontalDivider()
-            WeekRow(week, month, events, onDayClick, Modifier.weight(1f))
+            WeekRow(week, month, events, today, onDayClick, Modifier.weight(1f))
         }
     }
 }
@@ -195,6 +200,7 @@ private fun WeekRow(
     week: List<LocalDate>,
     month: YearMonth,
     events: Map<LocalDate, List<CalendarEvent>>,
+    today: LocalDate,
     onDayClick: (LocalDate) -> Unit,
     modifier: Modifier,
 ) {
@@ -208,6 +214,7 @@ private fun WeekRow(
             week.forEachIndexed { col, day ->
                 DayCell(
                     day = day,
+                    isToday = day == today,
                     inMonth = YearMonth.from(day) == month,
                     singles = layout.singles[col],
                     hidden = layout.hidden[col],
@@ -234,6 +241,7 @@ private fun WeekRow(
 @Composable
 private fun DayCell(
     day: LocalDate,
+    isToday: Boolean,
     inMonth: Boolean,
     singles: List<Pair<Int, CalendarEvent>>,
     hidden: Int,
@@ -242,7 +250,7 @@ private fun DayCell(
 ) {
     val scale = LocalDensity.current.fontScale
     Box(modifier.alpha(if (inMonth) 1f else 0.4f)) {
-        DayNumber(day, Modifier.align(Alignment.TopCenter))
+        DayNumber(day, isToday, Modifier.align(Alignment.TopCenter))
         singles.forEach { (row, event) ->
             EventChip(event, startsHere = true, endsHere = true, modifier = Modifier.offset(y = rowOffset(row, scale)).fillMaxWidth())
         }
@@ -253,15 +261,15 @@ private fun DayCell(
 }
 
 @Composable
-private fun DayNumber(day: LocalDate, modifier: Modifier) {
-    val isToday = day == LocalDate.now()
+private fun DayNumber(day: LocalDate, isToday: Boolean, modifier: Modifier) {
     val colors = MaterialTheme.colorScheme
     Text(
         text = day.dayOfMonth.toString(),
         modifier = modifier
             .padding(top = 2.dp)
             .size(22.dp * LocalDensity.current.fontScale)
-            .background(if (isToday) colors.primary else Color.Transparent, CircleShape),
+            .background(if (isToday) colors.primary else Color.Transparent, CircleShape)
+            .semantics { if (isToday) stateDescription = "dnes" },
         textAlign = TextAlign.Center,
         style = MaterialTheme.typography.labelMedium.copy(lineHeight = 22.sp),
         fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,

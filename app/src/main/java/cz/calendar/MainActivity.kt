@@ -1,6 +1,9 @@
 package cz.calendar
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.database.ContentObserver
 import android.os.Bundle
 import android.os.Handler
@@ -17,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import java.time.LocalDate
 
 class MainActivity : ComponentActivity() {
@@ -62,13 +66,28 @@ class MainActivity : ComponentActivity() {
         if (access) contentResolver.registerContentObserver(CalendarContract.CONTENT_URI, true, observer)
         // Access that just appeared (e.g. granted in system settings) needs reminders and widget planned now
         BackgroundWork.start(this, refreshWidget = access && !hadAccess)
+        val clock = IntentFilter().apply {
+            addAction(Intent.ACTION_DATE_CHANGED)
+            addAction(Intent.ACTION_TIME_CHANGED)
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+        }
+        // System clock broadcasts still arrive at a not exported receiver
+        ContextCompat.registerReceiver(this, clockChanged, clock, ContextCompat.RECEIVER_NOT_EXPORTED)
         hadAccess = access
         refreshTick.intValue++
     }
 
     override fun onPause() {
         contentResolver.unregisterContentObserver(observer)
+        unregisterReceiver(clockChanged)
         super.onPause()
+    }
+
+    // Midnight or a clock change while the app is on screen moves "today"
+    private val clockChanged = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            refreshTick.intValue++
+        }
     }
 }
 
