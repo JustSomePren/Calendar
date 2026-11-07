@@ -245,6 +245,47 @@ class RepositoryTest {
     }
 
     @Test
+    fun switchingSeriesBetweenAllDayAndTimedKeepsSkippedOccurrences() {
+        val previous = java.util.TimeZone.getDefault()
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Europe/Prague"))
+        try {
+            val prague = ZoneId.of("Europe/Prague")
+            val monday = java.time.LocalDate.of(2026, 3, 2)
+            val skipped = monday.plusWeeks(5)
+            val id = repository.saveEvent(
+                EventDraft.new(1, monday).copy(rule = "FREQ=WEEKLY", title = "Kurz"),
+            )
+            repository.deleteOccurrence(id, skipped.atTime(9, 0).atZone(prague).toInstant().toEpochMilli())
+
+            // Timed to all-day: the skipped occurrence becomes midnight UTC of its day
+            val opened = repository.event(id, monday.plusWeeks(1).atTime(9, 0).atZone(prague).toInstant().toEpochMilli())!!
+            repository.saveEvent(opened.copy(allDay = true))
+            val cancelled = { FakeCalendarProvider.events.single { it[Events.ORIGINAL_ID] == id }[Events.ORIGINAL_INSTANCE_TIME] }
+            assertEquals(skipped.atStartOfDay().toInstant(java.time.ZoneOffset.UTC).toEpochMilli(), cancelled())
+
+            // And back to 9:00 on the clock, also after the clocks moved forward
+            val reopened = repository.event(id, monday.plusWeeks(1).atStartOfDay().toInstant(java.time.ZoneOffset.UTC).toEpochMilli())!!
+            val day = monday.plusWeeks(1)
+            repository.saveEvent(reopened.copy(allDay = false, start = day.atTime(9, 0), end = day.atTime(10, 0)))
+            assertEquals(skipped.atTime(9, 0).atZone(prague).toInstant().toEpochMilli(), cancelled())
+        } finally {
+            java.util.TimeZone.setDefault(previous)
+        }
+    }
+
+    @Test
+    fun stoppingRepetitionRemovesChangedOccurrences() {
+        val id = repository.saveEvent(EventDraft.new(1, day).copy(rule = "FREQ=WEEKLY", title = "Porada"))
+        val series = FakeCalendarProvider.event(id)[Events.DTSTART] as Long
+        val second = repository.event(id, series + 7 * 24 * 3600_000L)!!
+        repository.saveOccurrence(second.copy(start = second.start.plusDays(3), end = second.end.plusDays(3)))
+
+        repository.saveEvent(repository.event(id, series)!!.copy(rule = null))
+
+        assertEquals(listOf(id), FakeCalendarProvider.events.map { it[Events._ID] })
+    }
+
+    @Test
     fun turningSeriesIntoSingleEventKeepsShownOccurrence() {
         val seriesId = repository.saveEvent(EventDraft.new(1, day).copy(rule = "FREQ=WEEKLY"))
         val occurrence = (FakeCalendarProvider.event(seriesId)[Events.DTSTART] as Long) + 14 * 24 * 3600_000L

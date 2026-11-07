@@ -11,9 +11,8 @@ import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
 import androidx.glance.LocalContext
 import androidx.glance.LocalSize
-import androidx.glance.action.ActionParameters
-import androidx.glance.action.actionParametersOf
 import androidx.glance.action.actionStartActivity
+import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
@@ -39,8 +38,6 @@ import kotlinx.coroutines.withContext
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
-
-private val dayKey = ActionParameters.Key<String>(EXTRA_DAY)
 
 class MonthWidget : GlanceAppWidget() {
 
@@ -139,7 +136,7 @@ private fun WidgetDay(day: LocalDate, col: Int, inMonth: Boolean, layout: WeekLa
         modifier
             .fillMaxHeight()
             .padding(vertical = 1.dp)
-            .clickable(actionStartActivity<MainActivity>(actionParametersOf(dayKey to day.toString()))),
+            .clickable(actionStartActivity(dayIntent(LocalContext.current, day))),
     ) {
         Text(
             day.dayOfMonth.toString(),

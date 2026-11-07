@@ -125,7 +125,12 @@ class FakeCalendarProvider : ContentProvider() {
     }
 
     override fun delete(uri: Uri, selection: String?, args: Array<out String>?): Int = when (uri.pathSegments.first()) {
-        "events" -> if (events.removeIf { it[Events._ID] == uri.lastPathSegment!!.toLong() }) 1 else 0
+        "events" -> when {
+            uri.pathSegments.size > 1 -> if (events.removeIf { it[Events._ID] == uri.lastPathSegment!!.toLong() }) 1 else 0
+            selection.orEmpty().startsWith(Events.ORIGINAL_ID) -> events.count { it[Events.ORIGINAL_ID].toString() == args!![0] }
+                .also { events.removeIf { it[Events.ORIGINAL_ID].toString() == args!![0] } }
+            else -> 0
+        }
         "attendees" -> if (
             attendees.removeIf {
                 it[Attendees.EVENT_ID].toString() == args!![0] && it[Attendees.ATTENDEE_EMAIL].toString().lowercase() == args[1]

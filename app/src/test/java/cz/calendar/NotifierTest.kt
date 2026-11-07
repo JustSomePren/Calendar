@@ -187,6 +187,20 @@ class NotifierTest {
     }
 
     @Test
+    fun tappingReminderOpensItsDayOnTopOfOpenScreens() {
+        soon(1, "Zubař")
+
+        EventNotifier.run(app, now)
+
+        val notification = Shadows.shadowOf(app.getSystemService(NotificationManager::class.java)).allNotifications.single()
+        val open = Shadows.shadowOf(notification.contentIntent).savedIntent
+        val day = java.time.LocalDate.now().toString()
+        assertEquals(day, open.getStringExtra(EXTRA_DAY))
+        // Differs from the app icon intent, so an unsaved editor is not thrown away
+        assertEquals("calendar-day:$day", open.dataString)
+    }
+
+    @Test
     fun muteButtonStopsFurtherReminders() {
         val weekly = soon(1, "Týdenní úklid")
         val mute = Intent(app, ReminderReceiver::class.java)

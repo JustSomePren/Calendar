@@ -236,7 +236,10 @@ class CalendarRepository(private val resolver: ContentResolver) {
         val values = eventValues(draft.copy(rule = rule))
         val newStart = draft.seriesStartMillis()
         values.put(Events.DTSTART, newStart)
-        if (draft.id != null && rule != null) moveSeriesHistory(draft.id, newStart)
+        if (draft.id != null) {
+            val seriesZone = if (draft.allDay) ZoneOffset.UTC else ZoneId.of(draft.timeZone)
+            if (rule != null) moveSeriesHistory(draft.id, newStart, seriesZone) else dropSeriesHistory(draft.id)
+        }
         val id = if (draft.id == null) {
             values.put(Events.CALENDAR_ID, draft.calendarId)
             ContentUris.parseId(resolver.insert(Events.CONTENT_URI, values) ?: error("Insert failed"))
@@ -248,8 +251,14 @@ class CalendarRepository(private val resolver: ContentResolver) {
         return id
     }
 
-    // Skipped and changed occurrences point at the old times of a series, move them along with it
-    private fun moveSeriesHistory(seriesId: Long, newStart: Long) {
+    // A series that stops repeating keeps no changed or skipped occurrences of its own
+    private fun dropSeriesHistory(seriesId: Long) {
+        resolver.delete(Events.CONTENT_URI, "${Events.ORIGINAL_ID} = ?", arrayOf(seriesId.toString()))
+    }
+
+    // Skipped and changed occurrences point at the old times of a series, move them along with it.
+    // The series may also switch zone (all-day ones live in UTC), so read old times in the old zone.
+    private fun moveSeriesHistory(seriesId: Long, newStart: Long, newZone: ZoneId) {
         val (oldStart, zone, excluded) = query(
             ContentUris.withAppendedId(Events.CONTENT_URI, seriesId),
             arrayOf(Events.DTSTART, Events.ALL_DAY, Events.EVENT_TIMEZONE, Events.EXDATE),
@@ -260,8 +269,8 @@ class CalendarRepository(private val resolver: ContentResolver) {
         if (oldStart == newStart) return
 
         // By the clock, so a move keeps the same local time across daylight-saving changes
-        val shift = Duration.between(Instant.ofEpochMilli(oldStart).atZone(zone).toLocalDateTime(), Instant.ofEpochMilli(newStart).atZone(zone).toLocalDateTime())
-        fun moved(millis: Long) = Instant.ofEpochMilli(millis).atZone(zone).toLocalDateTime().plus(shift).atZone(zone).toInstant().toEpochMilli()
+        val shift = Duration.between(Instant.ofEpochMilli(oldStart).atZone(zone).toLocalDateTime(), Instant.ofEpochMilli(newStart).atZone(newZone).toLocalDateTime())
+        fun moved(millis: Long) = Instant.ofEpochMilli(millis).atZone(zone).toLocalDateTime().plus(shift).atZone(newZone).toInstant().toEpochMilli()
 
         query(
             Events.CONTENT_URI,

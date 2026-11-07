@@ -71,9 +71,7 @@ object EventNotifier {
         if (!context.canNotify()) return
 
         val day = eventDays(event.begin, event.end, if (event.allDay) ZoneOffset.UTC else zone).start
-        val open = Intent(context, MainActivity::class.java)
-            .putExtra(EXTRA_DAY, day.toString())
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val open = dayIntent(context, day).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val id = "${event.eventId}:${event.begin}".hashCode()
         val pending = PendingIntent.getActivity(context, id, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val text = listOf(whenText(event, now, zone), event.location).filter { it.isNotBlank() }.joinToString(" · ")
