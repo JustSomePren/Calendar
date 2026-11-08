@@ -15,7 +15,7 @@ jobs:
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
       # Gradle's download server sometimes fails for a moment, try again before giving up
-      - run: for i in 1 2 3 4 5; do ./gradlew --version && break; sleep 30; done
+      - run: for i in 1 2 3 4 5; do ./gradlew --version && exit 0; sleep 30; done; exit 1
       # APK first, so a test failure never holds back the download
       - run: ./gradlew lintDebug assembleDebug
       - uses: actions/upload-artifact@v4
