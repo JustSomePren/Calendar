@@ -230,7 +230,8 @@ private fun CopySection(sources: List<CalendarInfo>, targets: List<CalendarInfo>
     SectionTitle("Zkopírovat kalendář")
     Hint(
         "Na starém telefonu Samsung tu vyber Samsung kalendář (nebo „Můj kalendář“) a jako cíl svůj Google kalendář. " +
-            "Události se zkopírují i s opakováním, Google je pak pošle do nového telefonu. Kopírovat jde opakovaně, " +
+            "Události se zkopírují i s opakováním a hned se odešlou na Google, který je pošle do nového telefonu. " +
+            "Že dorazily, ověříš na calendar.google.com. Kopírovat jde opakovaně, " +
             "události, které už v cíli jsou, se přeskočí. Účastníci se nekopírují, aby nikomu nepřišla pozvánka znovu.",
     )
     ChoiceRow("Z kalendáře", sources.filter { it.id != to }.map { it.id to "${it.name} (${it.account})" }, from, enabled = true) { from = it }
@@ -245,7 +246,10 @@ private fun CopySection(sources: List<CalendarInfo>, targets: List<CalendarInfo>
                 val result = withContext(Dispatchers.IO) {
                     runCatching {
                         val events = repository.copyableEvents(source)
-                        events.size to repository.import(events, target)
+                        val added = repository.import(events, target)
+                        // Send the copies to the server right away instead of waiting for the next sync
+                        repository.syncAll(targets.filter { it.id == target })
+                        events.size to added
                     }
                 }
                 copying = false

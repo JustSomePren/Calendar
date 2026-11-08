@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -54,6 +55,7 @@ fun CalendarDrawer(
     onAddAccount: () -> Unit,
     onNewCalendar: () -> Unit,
     onSettings: () -> Unit,
+    onSyncNow: () -> Unit,
 ) {
     ModalDrawerSheet {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 12.dp)) {
@@ -85,6 +87,7 @@ fun CalendarDrawer(
 
             HorizontalDivider(Modifier.padding(vertical = 12.dp))
             DrawerItem("Přidat účet", Icons.Default.Add, onAddAccount)
+            DrawerItem("Synchronizovat teď", Icons.Default.Refresh, onSyncNow)
             DrawerItem("Nový kalendář v telefonu", Icons.Default.DateRange, onNewCalendar)
             DrawerItem("Nastavení", Icons.Default.Settings, onSettings)
         }

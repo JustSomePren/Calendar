@@ -185,6 +185,13 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
                     closeDrawer()
                     newCalendar = true
                 },
+                onSyncNow = {
+                    closeDrawer()
+                    scope.launch {
+                        withContext(Dispatchers.IO) { repository.syncAll(calendars) }
+                        Toast.makeText(context, "Synchronizace spuštěna, změny se za chvíli objeví.", Toast.LENGTH_LONG).show()
+                    }
+                },
                 onSettings = {
                     closeDrawer()
                     context.startActivity(Intent(context, SettingsActivity::class.java))

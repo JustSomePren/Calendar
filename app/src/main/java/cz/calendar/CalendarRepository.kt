@@ -111,6 +111,14 @@ class CalendarRepository(private val resolver: ContentResolver) {
         if (!calendar.local) requestCalendarSync(android.accounts.Account(calendar.account, calendar.accountType))
     }
 
+    // Sends local changes to the server and fetches new ones, for every account with calendars
+    fun syncAll(calendars: List<CalendarInfo>) {
+        calendars.filter { it.synced && !it.local }
+            .map { android.accounts.Account(it.account, it.accountType) }
+            .distinct()
+            .forEach(::requestCalendarSync)
+    }
+
     // A calendar kept only on this phone, for use without any account
     fun createLocalCalendar(name: String, color: Int): Long {
         val asOwner = Calendars.CONTENT_URI.buildUpon()

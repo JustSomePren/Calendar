@@ -44,6 +44,7 @@ class CalendarDrawerTest {
                 onAddAccount = { actions += "account" },
                 onNewCalendar = { actions += "calendar" },
                 onSettings = { actions += "settings" },
+                onSyncNow = { actions += "sync" },
             )
         }
 
@@ -60,18 +61,19 @@ class CalendarDrawerTest {
         compose.onNodeWithText("Přidat účet").performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithText("Nový kalendář v telefonu").performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithText("Nastavení").performSemanticsAction(SemanticsActions.OnClick)
-        assertEquals(listOf("account", "calendar", "settings"), actions)
+        compose.onNodeWithText("Synchronizovat teď").performSemanticsAction(SemanticsActions.OnClick)
+        assertEquals(listOf("account", "calendar", "settings", "sync"), actions)
     }
 
     @Test
     fun unsyncedCalendarIsMarked() {
-        compose.setContent { CalendarDrawer(calendars, emptySet(), {}, {}, {}, {}) }
+        compose.setContent { CalendarDrawer(calendars, emptySet(), {}, {}, {}, {}, {}) }
         compose.onNodeWithText("Nesynchronizuje se – zaškrtnutím zapneš").assertExists()
     }
 
     @Test
     fun emptyPhoneSuggestsAccountOrLocalCalendar() {
-        compose.setContent { CalendarDrawer(emptyList(), emptySet(), {}, {}, {}, {}) }
+        compose.setContent { CalendarDrawer(emptyList(), emptySet(), {}, {}, {}, {}, {}) }
         compose.onNodeWithText("V telefonu zatím není žádný kalendář. Přidej účet, nebo založ kalendář v telefonu.").assertExists()
     }
 

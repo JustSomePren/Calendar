@@ -47,6 +47,19 @@ class RepositoryTest {
     }
 
     @Test
+    fun syncNowAsksEveryAccountButLocalOnes() {
+        FakeCalendarProvider.addCalendar(3, "Práce", account = "ja@firma.cz")
+        repository.createLocalCalendar("Domácnost", 0)
+
+        repository.syncAll(repository.calendars())
+
+        fun requests(name: String) = org.robolectric.shadows.ShadowContentResolver
+            .getStatus(android.accounts.Account(name, "com.google"), android.provider.CalendarContract.AUTHORITY)?.syncRequests ?: 0
+        assertTrue(requests("ja@gmail.com") > 0)
+        assertTrue(requests("ja@firma.cz") > 0)
+    }
+
+    @Test
     fun createsCalendarKeptOnlyOnPhone() {
         val id = repository.createLocalCalendar("Domácnost", 0xFFE67C73.toInt())
 
