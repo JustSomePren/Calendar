@@ -441,6 +441,51 @@ class CalendarRepository(private val resolver: ContentResolver) {
         resolver.insert(ContentUris.withAppendedId(Events.CONTENT_EXCEPTION_URI, id), values)
     }
 
+    // Every event of a calendar as import entries, so copying reuses the import with its duplicate check.
+    // Changed occurrences stay attached to their series, cancelled ones become skipped dates.
+    // Guests are left out, a copy must not send invitations again.
+    fun copyableEvents(calendarId: Long): List<IcsEvent> {
+        data class Row(
+            val id: Long,
+            val originalId: Long?,
+            val originalTime: Long,
+            val cancelled: Boolean,
+            val allDay: Boolean,
+            val excluded: String?,
+        )
+        val rows = query(
+            Events.CONTENT_URI,
+            arrayOf(Events._ID, Events.ORIGINAL_ID, Events.ORIGINAL_INSTANCE_TIME, Events.STATUS, Events.ALL_DAY, Events.EXDATE),
+            "${Events.CALENDAR_ID} = ? AND ${Events.DELETED} = 0",
+            arrayOf(calendarId.toString()),
+        ) { c ->
+            Row(
+                id = c.getLong(0),
+                originalId = if (c.isNull(1)) null else c.getLong(1),
+                originalTime = c.getLong(2),
+                cancelled = c.getInt(3) == Events.STATUS_CANCELED,
+                allDay = c.getInt(4) == 1,
+                excluded = c.getString(5)?.takeIf { it.isNotBlank() },
+            )
+        }
+
+        val skipped = rows.filter { it.originalId != null && it.cancelled }.groupBy({ it.originalId!! }) { row ->
+            val utc = Instant.ofEpochMilli(row.originalTime).atZone(ZoneOffset.UTC)
+            if (row.allDay) utc.format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE).take(8)
+            else utc.format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'"))
+        }
+
+        return rows.filterNot { it.cancelled }.mapNotNull { row ->
+            val draft = event(row.id)?.copy(id = null, attendees = emptyList()) ?: return@mapNotNull null
+            if (row.originalId != null) {
+                IcsEvent(draft.copy(originalId = null), uid = "copy:${row.originalId}", recurrenceId = row.originalTime)
+            } else {
+                val exdates = (listOfNotNull(row.excluded) + skipped[row.id].orEmpty()).joinToString(",").takeIf { it.isNotEmpty() }
+                IcsEvent(draft.copy(excludedDates = exdates?.takeIf { draft.rule != null }), uid = "copy:${row.id}")
+            }
+        }
+    }
+
     fun findException(seriesId: Long, instanceBegin: Long): Long? =
         query(
             Events.CONTENT_URI,

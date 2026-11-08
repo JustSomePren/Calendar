@@ -83,6 +83,41 @@ class RepositoryTest {
     }
 
     @Test
+    fun copiesSamsungCalendarIntoGoogleOnce() {
+        FakeCalendarProvider.addCalendar(5, "Můj kalendář", account = "Samsung")
+        val zone = ZoneId.systemDefault()
+        fun at(d: LocalDate, hour: Int) = d.atTime(hour, 0).atZone(zone).toInstant().toEpochMilli()
+        val single = FakeCalendarProvider.addEvent(
+            mapOf(Events.CALENDAR_ID to 5L, Events.TITLE to "Zubař", Events.ALL_DAY to 0, Events.DTSTART to at(day, 9), Events.DTEND to at(day, 10),
+                Events.EVENT_TIMEZONE to zone.id, Events.DELETED to 0),
+        )
+        FakeCalendarProvider.attendees += mutableMapOf(Attendees.EVENT_ID to single, Attendees.ATTENDEE_EMAIL to "jana@gmail.com", Attendees.ATTENDEE_STATUS to 1)
+        val weekly = FakeCalendarProvider.addEvent(
+            mapOf(Events.CALENDAR_ID to 5L, Events.TITLE to "Kurz", Events.ALL_DAY to 0, Events.DTSTART to at(day, 17), Events.DURATION to "P3600S",
+                Events.RRULE to "FREQ=WEEKLY", Events.EVENT_TIMEZONE to zone.id, Events.DELETED to 0),
+        )
+        repository.deleteOccurrence(weekly, at(day.plusWeeks(1), 17))
+        val moved = repository.event(weekly, at(day.plusWeeks(2), 17))!!
+        repository.saveOccurrence(moved.copy(start = moved.start.plusHours(1), end = moved.end.plusHours(1)))
+
+        assertEquals(3, repository.import(repository.copyableEvents(5), 1))
+
+        val copied = FakeCalendarProvider.events.filter { it[Events.CALENDAR_ID] == 1L }
+        val series = copied.single { it[Events.RRULE] != null }
+        val skipped = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(java.time.ZoneOffset.UTC)
+            .format(java.time.Instant.ofEpochMilli(at(day.plusWeeks(1), 17)))
+        assertEquals(skipped, series[Events.EXDATE])
+        val exception = copied.single { it[Events.ORIGINAL_ID] != null }
+        assertEquals(series[Events._ID], exception[Events.ORIGINAL_ID])
+        assertEquals(at(day.plusWeeks(2), 18), exception[Events.DTSTART])
+        val dentist = copied.single { it[Events.TITLE] == "Zubař" }
+        assertTrue(repository.attendees(dentist[Events._ID] as Long).isEmpty())
+
+        // Copying again adds nothing
+        assertEquals(0, repository.import(repository.copyableEvents(5), 1))
+    }
+
+    @Test
     fun savesNewEventWithAttendees() {
         val draft = EventDraft.new(1, day).copy(title = " Zubař ", attendees = listOf("Ja@Firma.cz"))
         val id = repository.saveEvent(draft)

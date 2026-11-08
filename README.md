@@ -58,7 +58,16 @@ Aby upozornění nechodila dvakrát, vypni je v aplikaci Google Kalendář (v na
 
 ## Samsung Kalendář
 
-Samsung kalendář se na telefonech jiných značek synchronizovat nedá. Na telefonu Samsung události vyexportuj nebo sdílej jako soubor `.ics` nebo `.vcs`, pošli si ho do telefonu a v nastavení → „Import ze Samsung Kalendáře“ ho vyber. Jde vybrat i víc souborů naráz, události, které už v kalendáři jsou, se přeskočí.
+Samsung kalendář se na telefonech jiných značek synchronizovat nedá. Na starém telefonu Samsung ho ale tahle aplikace umí zkopírovat do Google kalendáře:
+
+1. Na telefon Samsung nainstaluj tuto aplikaci (stejné APK, stačí Android 8 a novější) a povol jí přístup ke kalendářům.
+2. Ověř, že je na Samsungu přihlášený tvůj Google účet a synchronizuje kalendář.
+3. ☰ → Nastavení → **Zkopírovat kalendář**: „Z kalendáře“ vyber Samsung kalendář (nebo „Můj kalendář“), „Do kalendáře“ svůj Google kalendář, klepni na Zkopírovat.
+4. Google události pošle do nového telefonu. Kopírovat jde i opakovaně, co už v cíli je, se přeskočí.
+
+Zkopírují se i opakované události s vynechanými a změněnými výskyty. Účastníci se nekopírují, aby nikomu znovu nepřišla pozvánka.
+
+Jednotlivé sdílené události (.ics/.vcs) jde naimportovat v Nastavení → Import ze souboru.
 
 ## Data a baterie
 
@@ -93,6 +102,8 @@ Testy běží na počítači bez telefonu (Robolectric simuluje Android i kalend
 ```
 ./gradlew testDebugUnitTest koverHtmlReportDebug
 ```
+
+Testy běží i pro Android 9; Robolectric si tu verzi stahuje sám, přes zrcadlo s `-ProbolectricRepo=<url>`.
 
 Test `ScreenshotTour` uloží snímky všech obrazovek s ukázkovými daty do `app/build/shots/`.
 
