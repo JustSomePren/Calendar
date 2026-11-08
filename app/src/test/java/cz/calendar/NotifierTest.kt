@@ -194,7 +194,8 @@ class NotifierTest {
 
         val notification = Shadows.shadowOf(app.getSystemService(NotificationManager::class.java)).allNotifications.single()
         val open = Shadows.shadowOf(notification.contentIntent).savedIntent
-        val day = java.time.LocalDate.now().toString()
+        // The event starts 20 minutes from now, which just before midnight is already tomorrow
+        val day = java.time.Instant.ofEpochMilli(now + 20 * 60_000).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString()
         assertEquals(day, open.getStringExtra(EXTRA_DAY))
         // Differs from the app icon intent, so an unsaved editor is not thrown away
         assertEquals("calendar-day:$day", open.dataString)
