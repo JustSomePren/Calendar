@@ -13,8 +13,8 @@ android {
         applicationId = "cz.calendar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "2.0"
+        versionCode = 4
+        versionName = "2.1"
     }
 
     // Shared debug key, so a newer APK installs over the old one

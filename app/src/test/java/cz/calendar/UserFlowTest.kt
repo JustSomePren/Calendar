@@ -362,6 +362,23 @@ class UserFlowTest {
     }
 
     @Test
+    fun pickingYearAndMonthJumpsThere() {
+        val target = java.time.YearMonth.now().minusYears(3).withMonth(3)
+        addEvent("Stará dovolená", mapOf(Events.DTSTART to at(9, target.atDay(5)), Events.DTEND to at(10, target.atDay(5))))
+
+        ActivityScenario.launch(MainActivity::class.java).use {
+            waitForText(monthName(java.time.YearMonth.now()))
+            compose.onNode(hasText(monthName(java.time.YearMonth.now())) and hasClickAction()).performSemanticsAction(SemanticsActions.OnClick)
+            waitForText("Dnešní měsíc")
+            repeat(3) { compose.onNodeWithContentDescription("Předchozí rok").performSemanticsAction(SemanticsActions.OnClick) }
+            waitForText(target.year.toString())
+            compose.onNode(hasText("Březen") and hasClickAction()).performSemanticsAction(SemanticsActions.OnClick)
+            waitForText("${target.year} ▾")
+            waitForText("Stará dovolená")
+        }
+    }
+
+    @Test
     fun hidingCalendarRemovesItsEvents() {
         addEvent("Tajná věc", mapOf(Events.CALENDAR_ID to 2L))
         settings.hiddenCalendars = setOf(2L)

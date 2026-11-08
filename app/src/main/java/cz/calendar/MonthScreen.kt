@@ -147,6 +147,7 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
     val today = remember(refreshTick) { LocalDate.now() }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     var newCalendar by remember { mutableStateOf(false) }
+    var pickMonth by remember { mutableStateOf(false) }
     val accountPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val account = syncPickedAccount(result.data) ?: return@rememberLauncherForActivityResult
         Toast.makeText(context, "Kalendáře účtu ${account.name} se synchronizují, za chvíli se objeví.", Toast.LENGTH_LONG).show()
@@ -202,7 +203,7 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { MonthTitle(monthForPage(pagerState.currentPage)) },
+                    title = { MonthTitle(monthForPage(pagerState.currentPage), onClick = { pickMonth = true }) },
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
                             Icon(Icons.Default.Menu, contentDescription = "Kalendáře a účty")
@@ -246,6 +247,18 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
         }
     }
 
+    if (pickMonth) {
+        MonthPicker(
+            shown = monthForPage(pagerState.currentPage),
+            range = monthForPage(0)..monthForPage(pagerState.pageCount - 1),
+            onPick = { month ->
+                pickMonth = false
+                scope.launch { pagerState.scrollToPage(pageForDay(month.atDay(1))) }
+            },
+            onDismiss = { pickMonth = false },
+        )
+    }
+
     if (newCalendar) {
         NewCalendarDialog(
             onDismiss = { newCalendar = false },
@@ -260,10 +273,13 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
     }
 }
 
-// Big month name with the year next to it
+// Big month name with the year next to it, a tap picks another month or year
 @Composable
-private fun MonthTitle(month: YearMonth) {
-    Row(verticalAlignment = Alignment.Bottom) {
+private fun MonthTitle(month: YearMonth, onClick: () -> Unit) {
+    Row(
+        Modifier.clickable(onClickLabel = "Vybrat měsíc a rok", onClick = onClick),
+        verticalAlignment = Alignment.Bottom,
+    ) {
         Text(
             month.format(DateTimeFormatter.ofPattern("LLLL", czech)).capitalized(),
             style = MaterialTheme.typography.headlineSmall,
@@ -271,7 +287,7 @@ private fun MonthTitle(month: YearMonth) {
         )
         Spacer(Modifier.width(8.dp))
         Text(
-            month.year.toString(),
+            "${month.year} ▾",
             Modifier.padding(bottom = 2.dp),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
