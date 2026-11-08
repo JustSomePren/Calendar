@@ -14,11 +14,13 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew lintDebug testDebugUnitTest koverHtmlReportDebug assembleDebug
+      # APK first, so a test failure never holds back the download
+      - run: ./gradlew lintDebug assembleDebug
       - uses: actions/upload-artifact@v4
         with:
           name: kalendar-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+      - run: ./gradlew testDebugUnitTest koverHtmlReportDebug
       - uses: actions/upload-artifact@v4
         if: always()
         with:
