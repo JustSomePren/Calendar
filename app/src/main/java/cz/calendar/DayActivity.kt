@@ -82,7 +82,7 @@ class DayActivity : ComponentActivity() {
     }
 }
 
-private val titleFormat = DateTimeFormatter.ofPattern("EEEE d. MMMM", czech)
+val dayTitleFormat = DateTimeFormatter.ofPattern("EEEE d. MMMM", czech)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,7 +95,7 @@ private fun DayScreen(repository: CalendarRepository, settings: Settings, day: L
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(shown.format(titleFormat).capitalized()) },
+                title = { Text(shown.format(dayTitleFormat).capitalized()) },
                 navigationIcon = {
                     IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zpět") }
                 },
@@ -151,7 +151,7 @@ private fun eventCountWord(count: Int) = when {
 }
 
 @Composable
-private fun EventRow(event: CalendarEvent, onClick: () -> Unit) {
+fun EventRow(event: CalendarEvent, onClick: () -> Unit) {
     val zone = ZoneId.systemDefault()
     val days = eventDays(event.begin, event.end, if (event.allDay) ZoneOffset.UTC else zone)
     val dateFormat = DateTimeFormatter.ofPattern("d. M.")

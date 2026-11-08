@@ -148,6 +148,7 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     var newCalendar by remember { mutableStateOf(false) }
     var pickMonth by remember { mutableStateOf(false) }
+    var peek by remember { mutableStateOf<Pair<LocalDate, List<CalendarEvent>>?>(null) }
     val accountPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val account = syncPickedAccount(result.data) ?: return@rememberLauncherForActivityResult
         Toast.makeText(context, "Kalendáře účtu ${account.name} se synchronizují, za chvíli se objeví.", Toast.LENGTH_LONG).show()
@@ -236,7 +237,10 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
                         days = days,
                         events = events,
                         today = today,
-                        onDayClick = { context.startActivity(dayIntent(context, it)) },
+                        onDayClick = { day ->
+                            val list = events[day].orEmpty()
+                            if (list.size > PEEK_LIMIT) context.startActivity(dayIntent(context, day)) else peek = day to list
+                        },
                         // Holding a day alone starts a usual event, dragging over more days an all-day one
                         onRangeSelected = { from, to ->
                             context.startActivity(newEventIntent(context, from, to.takeIf { it != from }))
@@ -245,6 +249,26 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
                 }
             }
         }
+    }
+
+    peek?.let { (day, list) ->
+        DayPeek(
+            day = day,
+            events = list,
+            onEvent = { event ->
+                peek = null
+                context.startActivity(openEventIntent(context, event))
+            },
+            onAdd = {
+                peek = null
+                context.startActivity(newEventIntent(context, day))
+            },
+            onWholeDay = {
+                peek = null
+                context.startActivity(dayIntent(context, day))
+            },
+            onDismiss = { peek = null },
+        )
     }
 
     if (pickMonth) {
