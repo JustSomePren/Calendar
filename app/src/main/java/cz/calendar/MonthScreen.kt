@@ -155,7 +155,13 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
         withContext(Dispatchers.IO) { runCatching { readSyncFacts(context, calendars, settings.googleAccounts) }.getOrNull() }
     LaunchedEffect(refreshTick, changes) {
         calendars = withContext(Dispatchers.IO) { repository.calendars() }
-        syncFacts = readFacts()
+        val facts = readFacts()
+        syncFacts = facts
+        // Accounts set to sync whose calendars are still missing, e.g. after sharing was just switched
+        // on in Google Calendar: ask for the sync now instead of waiting for the phone's own schedule
+        if (facts != null && facts.googleCalendars == 0) {
+            withContext(Dispatchers.IO) { facts.accounts.filter { it.on }.forEach { runCatching { requestCalendarSync(it.account) } } }
+        }
     }
     val important = remember(refreshTick) { settings.eventsWithPriority(Priority.HIGH) }
     // Read again on every refresh, so "today" moves after midnight

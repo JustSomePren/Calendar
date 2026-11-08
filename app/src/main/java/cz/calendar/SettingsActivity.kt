@@ -4,7 +4,11 @@ import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.database.ContentObserver
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.provider.CalendarContract
 import android.provider.Settings as SystemSettings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -43,6 +47,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.Switch
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -86,8 +92,20 @@ class SettingsActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsScreen(repository: CalendarRepository, settings: Settings, onClose: () -> Unit) {
+    val context = LocalContext.current
     var calendars by remember { mutableStateOf(emptyList<CalendarInfo>()) }
-    LaunchedEffect(Unit) {
+    // Read again whenever the phone's calendar store changes, e.g. a sync still running when this opened
+    var changes by remember { mutableIntStateOf(0) }
+    DisposableEffect(Unit) {
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                changes++
+            }
+        }
+        context.contentResolver.registerContentObserver(CalendarContract.CONTENT_URI, true, observer)
+        onDispose { context.contentResolver.unregisterContentObserver(observer) }
+    }
+    LaunchedEffect(changes) {
         calendars = withContext(Dispatchers.IO) { repository.calendars().filter { it.synced } }
     }
 
@@ -129,6 +147,7 @@ private fun CalendarsSection(calendars: List<CalendarInfo>, settings: Settings) 
 
     SectionTitle("Kalendáře")
     Hint("Zaškrtnuté kalendáře se zobrazují. Kategorie určuje, na co tě aplikace upozorní.")
+    Hint("Jsou tu kalendáře, které telefon synchronizuje. Další kalendáře účtu zapneš v levém menu.")
     Category.entries.forEach { Hint("• ${it.label}: ${it.hint.replaceFirstChar { c -> c.lowercase() }}") }
 
     calendars.forEach { calendar ->
