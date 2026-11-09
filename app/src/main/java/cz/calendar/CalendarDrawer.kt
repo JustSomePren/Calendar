@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -28,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -51,6 +53,8 @@ private val calendarColors = listOf(0xFF039BE5, 0xFF33B679, 0xFFE67C73, 0xFFF6BF
 fun CalendarDrawer(
     calendars: List<CalendarInfo>,
     hidden: Set<Long>,
+    onlyMine: Boolean,
+    onOnlyMine: (Boolean) -> Unit,
     onToggle: (CalendarInfo) -> Unit,
     onAddAccount: () -> Unit,
     onNewCalendar: () -> Unit,
@@ -64,6 +68,17 @@ fun CalendarDrawer(
                 Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.titleLarge,
             )
+
+            Row(
+                Modifier.fillMaxWidth().toggleable(onlyMine, onValueChange = onOnlyMine).padding(horizontal = 24.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Jen co se mě týká")
+                    Hint("Pracovní kalendáře ukážou jen tvoje události, osobní vše")
+                }
+                Switch(checked = onlyMine, onCheckedChange = null)
+            }
 
             calendars.groupBy { it.account }.forEach { (account, accountCalendars) ->
                 Text(

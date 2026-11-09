@@ -96,6 +96,31 @@ class RepositoryTest {
     }
 
     @Test
+    fun onlyMineHidesWorkEventsThatDoNotConcernMe() {
+        FakeCalendarProvider.addCalendar(3, "Práce", account = "ja@firma.cz")
+        fun add(title: String, calendar: Long, organizer: String = "ja@gmail.com") = FakeCalendarProvider.addEvent(
+            mapOf(
+                Events.CALENDAR_ID to calendar, Events.TITLE to title, Events.ALL_DAY to 0, Events.ORGANIZER to organizer,
+                Events.DTSTART to day.atTime(9, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                Events.DTEND to day.atTime(10, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+            )
+        )
+        add("Cizí porada", 3, organizer = "sef@firma.cz")
+        val followed = add("Sledovaná porada", 3, organizer = "sef@firma.cz")
+        add("Moje porada", 3, organizer = "ja@firma.cz")
+        add("Sprint testProjekt", 3, organizer = "sef@firma.cz")
+        add("Cizí oslava", 1, organizer = "kamarad@gmail.com")
+        val ranking = Ranking(
+            { if (it == 3L) Category.WORK else Category.PERSONAL }, { false }, listOf("ja@firma.cz"), listOf("testProjekt"),
+            watched = { id, _ -> id == followed },
+            onlyMine = true,
+        )
+
+        val titles = repository.eventsByDay(day, day, emptySet(), ranking = ranking).getValue(day).map { it.title }.toSet()
+        assertEquals(setOf("Cizí oslava", "Sledovaná porada", "Moje porada", "Sprint testProjekt"), titles)
+    }
+
+    @Test
     fun copiesSamsungCalendarIntoGoogleOnce() {
         FakeCalendarProvider.addCalendar(5, "Můj kalendář", account = "Samsung")
         val zone = ZoneId.systemDefault()

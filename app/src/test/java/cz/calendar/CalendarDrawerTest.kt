@@ -40,6 +40,8 @@ class CalendarDrawerTest {
             CalendarDrawer(
                 calendars,
                 hidden = emptySet(),
+                onlyMine = false,
+                onOnlyMine = { actions += "onlyMine $it" },
                 onToggle = { toggled += it.id },
                 onAddAccount = { actions += "account" },
                 onNewCalendar = { actions += "calendar" },
@@ -67,13 +69,13 @@ class CalendarDrawerTest {
 
     @Test
     fun unsyncedCalendarIsMarked() {
-        compose.setContent { CalendarDrawer(calendars, emptySet(), {}, {}, {}, {}, {}) }
+        compose.setContent { CalendarDrawer(calendars, emptySet(), false, {}, {}, {}, {}, {}, {}) }
         compose.onNodeWithText("Nesynchronizuje se – zaškrtnutím zapneš").assertExists()
     }
 
     @Test
     fun emptyPhoneSuggestsAccountOrLocalCalendar() {
-        compose.setContent { CalendarDrawer(emptyList(), emptySet(), {}, {}, {}, {}, {}) }
+        compose.setContent { CalendarDrawer(emptyList(), emptySet(), false, {}, {}, {}, {}, {}, {}) }
         compose.onNodeWithText("V telefonu zatím není žádný kalendář. Přidej účet, nebo založ kalendář v telefonu.").assertExists()
     }
 

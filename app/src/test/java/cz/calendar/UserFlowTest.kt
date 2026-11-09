@@ -417,6 +417,22 @@ class UserFlowTest {
     }
 
     @Test
+    fun onlyMineSwitchInMenuHidesOtherWorkEvents() {
+        settings.setCategory(2, Category.WORK)
+        addEvent("Cizí porada", mapOf(Events.CALENDAR_ID to 2L, Events.ORGANIZER to "sef@firma.cz"))
+        addEvent("Kadeřník")
+
+        ActivityScenario.launch(MainActivity::class.java).use {
+            waitForText("Cizí porada")
+            compose.onNodeWithContentDescription("Kalendáře a účty").performClick()
+            compose.onNode(hasText("Jen co se mě týká") and androidx.compose.ui.test.isToggleable()).performSemanticsAction(SemanticsActions.OnClick)
+            waitFor { compose.onAllNodesWithText("Cizí porada").fetchSemanticsNodes().isEmpty() }
+            assertTrue(compose.onAllNodesWithText("Kadeřník").fetchSemanticsNodes().isNotEmpty())
+            assertTrue(settings.onlyMine)
+        }
+    }
+
+    @Test
     fun hidingCalendarRemovesItsEvents() {
         addEvent("Tajná věc", mapOf(Events.CALENDAR_ID to 2L))
         settings.hiddenCalendars = setOf(2L)

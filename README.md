@@ -10,6 +10,7 @@ Zobrazuje kalendáře, které už má telefon synchronizované, tedy i všechny 
 - listování měsíců tažením do stran, tlačítko „Dnes“
 - klepnutím na den s 0–3 událostmi malé okno zespodu (události, „Přidat událost“, „Celý den“), u rušnějšího dne rovnou přehled na celou obrazovku
 - klepnutím na název měsíce rychlý skok na jiný měsíc a rok (šipkami po letech)
+- přepínač „Jen co se mě týká“ v menu (☰): osobní a tiché kalendáře ukážou vše, pracovní jen tvoje události (organizuješ, jsi pozván, vytvořil jsi je, odpovídají pracovnímu filtru, nebo je sleduješ) – platí pro měsíc, den i widget
 - levé menu (☰): připojené účty a všechny jejich kalendáře se zaškrtnutím, co vidíš; kalendář, který telefon zatím nesynchronizuje (např. pracovní přidaný v Google Kalendáři na webu), se zaškrtnutím začne synchronizovat
 - „Nový kalendář v telefonu“: kalendář bez účtu, zůstává jen v telefonu (nezálohuje se)
 - klepnutím na den detail se všemi jeho událostmi, seřazenými: osobní, pracovní, které se tě týkají, ostatní pracovní, zbytek; tažením do stran další dny

@@ -138,6 +138,7 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
 
     // Visibility and priorities change in other screens, so read them again on every refresh
     var hidden by remember(refreshTick) { mutableStateOf(settings.hiddenCalendars) }
+    var onlyMine by remember { mutableStateOf(settings.onlyMine) }
     var calendars by remember { mutableStateOf(emptyList<CalendarInfo>()) }
     LaunchedEffect(refreshTick, changes) {
         calendars = withContext(Dispatchers.IO) { repository.calendars() }
@@ -165,6 +166,12 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
             CalendarDrawer(
                 calendars = calendars,
                 hidden = hidden,
+                onlyMine = onlyMine,
+                onOnlyMine = {
+                    onlyMine = it
+                    settings.onlyMine = it
+                    scope.launch { refreshMonthWidgets(context) }
+                },
                 onToggle = { calendar ->
                     if (!calendar.synced) {
                         // A calendar the phone does not sync yet: switch it on and show it
@@ -227,7 +234,7 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
                     val month = monthForPage(page)
                     val days = remember(month) { gridDays(month) }
                     var events by remember { mutableStateOf(emptyMap<LocalDate, List<CalendarEvent>>()) }
-                    LaunchedEffect(month, refreshTick, hidden, changes) {
+                    LaunchedEffect(month, refreshTick, hidden, changes, onlyMine) {
                         events = withContext(Dispatchers.IO) {
                             repository.eventsByDay(days.first(), days.last(), hidden, important, settings.ranking())
                         }

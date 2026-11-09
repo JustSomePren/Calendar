@@ -37,9 +37,18 @@ class Ranking(
     val isCreated: (Long) -> Boolean,
     val emails: List<String>,
     val keywords: List<String>,
+    val watched: (eventId: Long, seriesId: Long) -> Boolean = { _, _ -> false },
+    val onlyMine: Boolean = false,
 )
 
-fun Settings.ranking() = Ranking(::category, ::isCreated, workEmails, workKeywords)
+fun Settings.ranking() = Ranking(
+    ::category, ::isCreated, workEmails, workKeywords,
+    watched = { id, series -> watchFor(id, series) == Watch.ALWAYS },
+    onlyMine = onlyMine,
+)
+
+// Rank of work events that do not concern me, see eventRank
+private const val OTHER_WORK = 2
 
 data class CalendarEvent(
     val eventId: Long,
@@ -55,6 +64,7 @@ data class CalendarEvent(
     val organizer: String = "",
     val location: String = "",
     val description: String = "",
+    val seriesId: Long = eventId,
 )
 
 data class Attendee(val email: String, val status: Int) {
@@ -183,6 +193,7 @@ class CalendarRepository(private val resolver: ContentResolver) {
                 organizer = c.getString(8).orEmpty(),
                 location = c.getString(9).orEmpty(),
                 description = c.getString(10).orEmpty(),
+                seriesId = if (c.isNull(7)) c.getLong(0) else c.getLong(7),
             )
             all += event
 
@@ -194,8 +205,10 @@ class CalendarRepository(private val resolver: ContentResolver) {
         }
 
         val ranks = ranking?.let { rank(all, it) }.orEmpty()
+        val onlyMine = ranking?.onlyMine == true
         return result.mapValues { (_, events) ->
             events.map { it.copy(rank = ranks[it.eventId to it.begin] ?: 0) }
+                .filter { !onlyMine || it.rank != OTHER_WORK }
                 .sortedWith(compareBy<CalendarEvent> { it.rank }.thenByDescending { it.allDay || it.multiDay }.thenBy { it.begin })
         }
     }
@@ -210,7 +223,7 @@ class CalendarRepository(private val resolver: ContentResolver) {
                 description = event.description, organizer = event.organizer, account = accounts[event.calendarId].orEmpty(),
                 begin = event.begin, end = event.end, allDay = event.allDay,
             )
-            val mine = upcoming.isMine || ranking.isCreated(event.eventId)
+            val mine = upcoming.isMine || ranking.isCreated(event.eventId) || ranking.watched(event.eventId, event.seriesId)
             (event.eventId to event.begin) to eventRank(ranking.category(event.calendarId), mine) {
                 matchesWorkFilter(upcoming, attendees[event.eventId].orEmpty(), ranking.emails, ranking.keywords)
             }
