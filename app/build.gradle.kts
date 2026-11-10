@@ -13,8 +13,8 @@ android {
         applicationId = "cz.calendar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "2.3"
+        versionCode = 7
+        versionName = "2.4"
     }
 
     // The key is not in the repository. GitHub Actions gets it from secrets (see README),
@@ -33,6 +33,10 @@ android {
     buildTypes {
         debug {
             signingConfigs.findByName("own")?.let { signingConfig = it }
+        }
+        // What goes to the phone: not debuggable, which Play Protect trusts more
+        release {
+            signingConfig = signingConfigs.findByName("own") ?: signingConfigs.getByName("debug")
         }
     }
 

@@ -38,7 +38,7 @@ jobs:
             echo "::warning::GitHub nevydal Gradle, beru ho ze zrcadla (ověřeno SHA-256)"
             ./gradlew --version
           fi
-      - run: ./gradlew lintDebug testDebugUnitTest koverHtmlReportDebug assembleDebug
+      - run: ./gradlew lintDebug testDebugUnitTest koverHtmlReportDebug assembleRelease
         env:
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
       # A fixed download link for the phone, no ZIP: releases/download/nejnovejsi/kalendar.apk
@@ -46,7 +46,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk kalendar.apk
+          cp app/build/outputs/apk/release/app-release.apk kalendar.apk
           gh release delete nejnovejsi --yes --cleanup-tag || true
           gh release create nejnovejsi kalendar.apk --title "Kalendář – nejnovější verze" --target "$GITHUB_SHA" \
             --notes "Sestaveno z větve $GITHUB_REF_NAME, commit ${GITHUB_SHA::7}."
