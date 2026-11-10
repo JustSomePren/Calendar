@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import java.time.Instant
 import java.time.ZoneId
@@ -124,7 +125,9 @@ object EventNotifier {
         val intent = receiverIntent(context, 0, null)
         when {
             at == null -> alarms.cancel(intent)
-            alarms.canScheduleExactAlarms() -> alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, intent)
+            // Before Android 12 exact alarms need no permission
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarms.canScheduleExactAlarms() ->
+                alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, intent)
             else -> alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, intent)
         }
     }

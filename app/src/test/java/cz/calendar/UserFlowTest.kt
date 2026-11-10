@@ -362,6 +362,77 @@ class UserFlowTest {
     }
 
     @Test
+    fun pickingYearAndMonthJumpsThere() {
+        val target = java.time.YearMonth.now().minusYears(3).withMonth(3)
+        addEvent("Stará dovolená", mapOf(Events.DTSTART to at(9, target.atDay(5)), Events.DTEND to at(10, target.atDay(5))))
+
+        ActivityScenario.launch(MainActivity::class.java).use {
+            waitForText(monthName(java.time.YearMonth.now()))
+            compose.onNode(hasText(monthName(java.time.YearMonth.now())) and hasClickAction()).performSemanticsAction(SemanticsActions.OnClick)
+            waitForText("Dnešní měsíc")
+            repeat(3) { compose.onNodeWithContentDescription("Předchozí rok").performSemanticsAction(SemanticsActions.OnClick) }
+            waitForText(target.year.toString())
+            compose.onNode(hasText("Březen") and hasClickAction()).performSemanticsAction(SemanticsActions.OnClick)
+            waitForText("${target.year} ▾")
+            waitForText("Stará dovolená")
+        }
+    }
+
+    private fun tapDayWith(title: String) =
+        compose.onAllNodes(hasClickAction() and androidx.compose.ui.test.hasAnyDescendant(hasText(title)))[0]
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+    @Test
+    fun dayWithFewEventsOpensSmallSheet() {
+        val id = addEvent("Zubař")
+
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            waitForText("Zubař")
+            tapDayWith("Zubař")
+            waitForText("Celý den")
+            waitForText("09:00 – 10:00")
+            scenario.onActivity { assertEquals(null, Shadows.shadowOf(it).nextStartedActivity) }
+
+            compose.onNode(hasClickAction() and hasText("09:00 – 10:00")).performSemanticsAction(SemanticsActions.OnClick)
+            scenario.onActivity { activity ->
+                val started = Shadows.shadowOf(activity).nextStartedActivity
+                assertEquals(EventEditActivity::class.java.name, started.component?.className)
+                assertEquals(id, started.getLongExtra(EXTRA_EVENT_ID, -1))
+            }
+        }
+    }
+
+    @Test
+    fun busyDayOpensWholePage() {
+        for (i in 0..PEEK_LIMIT) addEvent("Schůzka $i", mapOf(Events.DTSTART to at(8 + i), Events.DTEND to at(9 + i)))
+
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            waitForText("Schůzka 0")
+            tapDayWith("Schůzka 0")
+            scenario.onActivity { activity ->
+                val started = Shadows.shadowOf(activity).nextStartedActivity
+                assertEquals(DayActivity::class.java.name, started.component?.className)
+            }
+        }
+    }
+
+    @Test
+    fun onlyMineSwitchInMenuHidesOtherWorkEvents() {
+        settings.setCategory(2, Category.WORK)
+        addEvent("Cizí porada", mapOf(Events.CALENDAR_ID to 2L, Events.ORGANIZER to "sef@firma.cz"))
+        addEvent("Kadeřník")
+
+        ActivityScenario.launch(MainActivity::class.java).use {
+            waitForText("Cizí porada")
+            compose.onNodeWithContentDescription("Kalendáře a účty").performClick()
+            compose.onNode(hasText("Jen co se mě týká") and androidx.compose.ui.test.isToggleable()).performSemanticsAction(SemanticsActions.OnClick)
+            waitFor { compose.onAllNodesWithText("Cizí porada").fetchSemanticsNodes().isEmpty() }
+            assertTrue(compose.onAllNodesWithText("Kadeřník").fetchSemanticsNodes().isNotEmpty())
+            assertTrue(settings.onlyMine)
+        }
+    }
+
+    @Test
     fun hidingCalendarRemovesItsEvents() {
         addEvent("Tajná věc", mapOf(Events.CALENDAR_ID to 2L))
         settings.hiddenCalendars = setOf(2L)

@@ -63,7 +63,7 @@ private suspend fun loadWidgetData(context: Context): WidgetData = withContext(D
     val events = if (context.hasCalendarAccess()) {
         val settings = Settings(context)
         CalendarRepository(context.contentResolver)
-            .eventsByDay(days.first(), days.last(), settings.hiddenCalendars, settings.eventsWithPriority(Priority.HIGH))
+            .eventsByDay(days.first(), days.last(), settings.hiddenCalendars, settings.eventsWithPriority(Priority.HIGH), settings.ranking())
     } else {
         null
     }

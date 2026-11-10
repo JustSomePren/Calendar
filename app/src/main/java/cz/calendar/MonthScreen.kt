@@ -146,6 +146,7 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
 
     // Visibility and priorities change in other screens, so read them again on every refresh
     var hidden by remember(refreshTick) { mutableStateOf(settings.hiddenCalendars) }
+    var onlyMine by remember { mutableStateOf(settings.onlyMine) }
     var calendars by remember { mutableStateOf(emptyList<CalendarInfo>()) }
     // What keeps Google calendars from the phone; read again whenever the app comes back
     var syncFacts by remember { mutableStateOf<SyncFacts?>(null) }
@@ -203,6 +204,8 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
             changes++
         }
     }
+    var pickMonth by remember { mutableStateOf(false) }
+    var peek by remember { mutableStateOf<Pair<LocalDate, List<CalendarEvent>>?>(null) }
     val accountPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         pickedAccount(result.data)?.let { onAccountPicked(it) }
     }
@@ -243,6 +246,12 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
                 onFixSync = ::fix,
                 calendars = calendars,
                 hidden = hidden,
+                onlyMine = onlyMine,
+                onOnlyMine = {
+                    onlyMine = it
+                    settings.onlyMine = it
+                    scope.launch { refreshMonthWidgets(context) }
+                },
                 onToggle = { calendar ->
                     if (!calendar.synced) {
                         // A calendar the phone does not sync yet: switch it on and show it
@@ -266,6 +275,13 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
                     closeDrawer()
                     newCalendar = true
                 },
+                onSyncNow = {
+                    closeDrawer()
+                    scope.launch {
+                        withContext(Dispatchers.IO) { repository.syncAll(calendars) }
+                        Toast.makeText(context, "Synchronizace spuštěna, změny se za chvíli objeví.", Toast.LENGTH_LONG).show()
+                    }
+                },
                 onSettings = {
                     closeDrawer()
                     context.startActivity(Intent(context, SettingsActivity::class.java))
@@ -276,7 +292,7 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { MonthTitle(monthForPage(pagerState.currentPage)) },
+                    title = { MonthTitle(monthForPage(pagerState.currentPage), onClick = { pickMonth = true }) },
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
                             Icon(Icons.Default.Menu, contentDescription = "Kalendáře a účty")
@@ -299,7 +315,7 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
                     val month = monthForPage(page)
                     val days = remember(month) { gridDays(month) }
                     var events by remember { mutableStateOf(emptyMap<LocalDate, List<CalendarEvent>>()) }
-                    LaunchedEffect(month, refreshTick, hidden, changes) {
+                    LaunchedEffect(month, refreshTick, hidden, changes, onlyMine) {
                         events = withContext(Dispatchers.IO) {
                             repository.eventsByDay(days.first(), days.last(), hidden, important, settings.ranking())
                         }
@@ -320,7 +336,10 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
                         events = events,
                         photos = photos,
                         today = today,
-                        onDayClick = { context.startActivity(dayIntent(context, it)) },
+                        onDayClick = { day ->
+                            val list = events[day].orEmpty()
+                            if (list.size > PEEK_LIMIT) context.startActivity(dayIntent(context, day)) else peek = day to list
+                        },
                         // Holding a day alone starts a usual event, dragging over more days an all-day one
                         onRangeSelected = { from, to ->
                             context.startActivity(newEventIntent(context, from, to.takeIf { it != from }))
@@ -409,6 +428,38 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
         )
     }
 
+    peek?.let { (day, list) ->
+        DayPeek(
+            day = day,
+            events = list,
+            onEvent = { event ->
+                peek = null
+                context.startActivity(openEventIntent(context, event))
+            },
+            onAdd = {
+                peek = null
+                context.startActivity(newEventIntent(context, day))
+            },
+            onWholeDay = {
+                peek = null
+                context.startActivity(dayIntent(context, day))
+            },
+            onDismiss = { peek = null },
+        )
+    }
+
+    if (pickMonth) {
+        MonthPicker(
+            shown = monthForPage(pagerState.currentPage),
+            range = monthForPage(0)..monthForPage(pagerState.pageCount - 1),
+            onPick = { month ->
+                pickMonth = false
+                scope.launch { pagerState.scrollToPage(pageForDay(month.atDay(1))) }
+            },
+            onDismiss = { pickMonth = false },
+        )
+    }
+
     if (newCalendar) {
         NewCalendarDialog(
             onDismiss = { newCalendar = false },
@@ -423,10 +474,13 @@ fun MonthScreen(repository: CalendarRepository, settings: Settings, refreshTick:
     }
 }
 
-// Big month name with the year next to it
+// Big month name with the year next to it, a tap picks another month or year
 @Composable
-private fun MonthTitle(month: YearMonth) {
-    Row(verticalAlignment = Alignment.Bottom) {
+private fun MonthTitle(month: YearMonth, onClick: () -> Unit) {
+    Row(
+        Modifier.clickable(onClickLabel = "Vybrat měsíc a rok", onClick = onClick),
+        verticalAlignment = Alignment.Bottom,
+    ) {
         Text(
             month.format(DateTimeFormatter.ofPattern("LLLL", czech)).capitalized(),
             style = MaterialTheme.typography.headlineSmall,
@@ -434,7 +488,7 @@ private fun MonthTitle(month: YearMonth) {
         )
         Spacer(Modifier.width(8.dp))
         Text(
-            month.year.toString(),
+            "${month.year} ▾",
             Modifier.padding(bottom = 2.dp),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

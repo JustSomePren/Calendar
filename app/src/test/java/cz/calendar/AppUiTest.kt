@@ -53,6 +53,15 @@ class AppUiTest {
         }
     }
 
+    // The app also runs on older phones, e.g. to copy Samsung's calendar from them
+    @Test
+    @Config(sdk = [28])
+    fun runsOnAndroid9() {
+        ActivityScenario.launch(MainActivity::class.java).use {
+            compose.waitUntil(15_000) { compose.onAllNodesWithText("Zubař").fetchSemanticsNodes().isNotEmpty() }
+        }
+    }
+
     @Test
     fun dayFromWidgetOpensDayDetail() {
         val intent = dayIntent(ApplicationProvider.getApplicationContext(), today)

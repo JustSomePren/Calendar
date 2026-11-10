@@ -7,7 +7,10 @@ Zobrazuje kalendáře, které už má telefon synchronizované, tedy i všechny 
 ## Co umí
 
 - měsíc na celou obrazovku, události přímo ve dnech, vícedenní jako jeden pruh
-- listování měsíců tažením do stran, tlačítko „Dnes“, klepnutím na den jeho přehled
+- listování měsíců tažením do stran, tlačítko „Dnes“
+- klepnutím na den s 0–3 událostmi malé okno zespodu (události, „Přidat událost“, „Celý den“), u rušnějšího dne rovnou přehled na celou obrazovku
+- klepnutím na název měsíce rychlý skok na jiný měsíc a rok (šipkami po letech)
+- přepínač „Jen co se mě týká“ v menu (☰): osobní a tiché kalendáře ukážou vše, pracovní jen tvoje události (organizuješ, jsi pozván, vytvořil jsi je, odpovídají pracovnímu filtru, nebo je sleduješ) – platí pro měsíc, den i widget
 - levé menu (☰): připojené účty a všechny jejich kalendáře se zaškrtnutím, co vidíš; kalendář, který telefon zatím nesynchronizuje (např. pracovní přidaný v Google Kalendáři na webu), se zaškrtnutím začne synchronizovat
 - „Nový kalendář v telefonu“: kalendář bez účtu, zůstává jen v telefonu (nezálohuje se)
 - klepnutím na den detail se všemi jeho událostmi, seřazenými: osobní, pracovní, které se tě týkají, ostatní pracovní, zbytek; tažením do stran další dny
@@ -80,7 +83,16 @@ Aplikace si navzájem povolí přístup jen tehdy, když je ta druhá podepsaná
 
 ## Samsung Kalendář
 
-Samsung kalendář se na telefonech jiných značek synchronizovat nedá. Na telefonu Samsung události vyexportuj nebo sdílej jako soubor `.ics` nebo `.vcs`, pošli si ho do telefonu a v nastavení → „Import ze Samsung Kalendáře“ ho vyber. Jde vybrat i víc souborů naráz, události, které už v kalendáři jsou, se přeskočí.
+Samsung kalendář se na telefonech jiných značek synchronizovat nedá. Na starém telefonu Samsung ho ale tahle aplikace umí zkopírovat do Google kalendáře:
+
+1. Na telefon Samsung nainstaluj tuto aplikaci (stejné APK, stačí Android 8 a novější) a povol jí přístup ke kalendářům.
+2. Ověř, že je na Samsungu přihlášený tvůj Google účet a synchronizuje kalendář.
+3. ☰ → Nastavení → **Zkopírovat kalendář**: „Z kalendáře“ vyber Samsung kalendář (nebo „Můj kalendář“), „Do kalendáře“ svůj Google kalendář, klepni na Zkopírovat.
+4. Google události pošle do nového telefonu. Kopírovat jde i opakovaně, co už v cíli je, se přeskočí.
+
+Zkopírují se i opakované události s vynechanými a změněnými výskyty. Účastníci se nekopírují, aby nikomu znovu nepřišla pozvánka.
+
+Jednotlivé sdílené události (.ics/.vcs) jde naimportovat v Nastavení → Import ze souboru.
 
 ## Data a baterie
 
@@ -174,6 +186,8 @@ Testy běží na počítači bez telefonu (Robolectric simuluje Android i kalend
 ```
 ./gradlew testDebugUnitTest koverHtmlReportDebug
 ```
+
+Testy běží i pro Android 9; Robolectric si tu verzi stahuje sám, přes zrcadlo s `-ProbolectricRepo=<url>`.
 
 Test `ScreenshotTour` uloží snímky všech obrazovek s ukázkovými daty do `app/build/shots/`.
 

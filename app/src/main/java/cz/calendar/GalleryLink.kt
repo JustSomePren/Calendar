@@ -10,6 +10,7 @@ import android.database.MatrixCursor
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
 import android.util.LruCache
 import android.widget.Toast
 import java.time.Duration
@@ -31,8 +32,9 @@ object GalleryLink {
 
     fun installed(context: Context) = context.packageManager.resolveContentProvider(AUTHORITY, 0) != null
 
+    // The gallery needs Android 13, so on older phones there is never one to trust
     fun isGallery(context: Context, pkg: String?) =
-        pkg == PACKAGE && context.packageManager.hasSigningCertificate(pkg, CERT.chunked(2).map { it.toInt(16).toByte() }.toByteArray(), PackageManager.CERT_INPUT_SHA256)
+        pkg == PACKAGE && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && context.packageManager.hasSigningCertificate(pkg, CERT.chunked(2).map { it.toInt(16).toByte() }.toByteArray(), PackageManager.CERT_INPUT_SHA256)
 
     fun accounts(context: Context): List<String> = query(context, "accounts") { it.getString(0) }.orEmpty()
 

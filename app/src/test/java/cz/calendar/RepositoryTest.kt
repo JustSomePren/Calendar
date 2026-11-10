@@ -47,6 +47,19 @@ class RepositoryTest {
     }
 
     @Test
+    fun syncNowAsksEveryAccountButLocalOnes() {
+        FakeCalendarProvider.addCalendar(3, "Práce", account = "ja@firma.cz")
+        repository.createLocalCalendar("Domácnost", 0)
+
+        repository.syncAll(repository.calendars())
+
+        fun requests(name: String) = org.robolectric.shadows.ShadowContentResolver
+            .getStatus(android.accounts.Account(name, "com.google"), android.provider.CalendarContract.AUTHORITY)?.syncRequests ?: 0
+        assertTrue(requests("ja@gmail.com") > 0)
+        assertTrue(requests("ja@firma.cz") > 0)
+    }
+
+    @Test
     fun createsCalendarKeptOnlyOnPhone() {
         val id = repository.createLocalCalendar("Domácnost", 0xFFE67C73.toInt())
 
@@ -80,6 +93,66 @@ class RepositoryTest {
 
         val titles = repository.eventsByDay(day, day, emptySet(), ranking = ranking).getValue(day).map { it.title }
         assertEquals(listOf("Oběd", "Sprint testProjekt", "Pozvánka", "Cizí", "Svátek"), titles)
+    }
+
+    @Test
+    fun onlyMineHidesWorkEventsThatDoNotConcernMe() {
+        FakeCalendarProvider.addCalendar(3, "Práce", account = "ja@firma.cz")
+        fun add(title: String, calendar: Long, organizer: String = "ja@gmail.com") = FakeCalendarProvider.addEvent(
+            mapOf(
+                Events.CALENDAR_ID to calendar, Events.TITLE to title, Events.ALL_DAY to 0, Events.ORGANIZER to organizer,
+                Events.DTSTART to day.atTime(9, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                Events.DTEND to day.atTime(10, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+            )
+        )
+        add("Cizí porada", 3, organizer = "sef@firma.cz")
+        val followed = add("Sledovaná porada", 3, organizer = "sef@firma.cz")
+        add("Moje porada", 3, organizer = "ja@firma.cz")
+        add("Sprint testProjekt", 3, organizer = "sef@firma.cz")
+        add("Cizí oslava", 1, organizer = "kamarad@gmail.com")
+        val ranking = Ranking(
+            { if (it == 3L) Category.WORK else Category.PERSONAL }, { false }, listOf("ja@firma.cz"), listOf("testProjekt"),
+            watched = { id, _ -> id == followed },
+            onlyMine = true,
+        )
+
+        val titles = repository.eventsByDay(day, day, emptySet(), ranking = ranking).getValue(day).map { it.title }.toSet()
+        assertEquals(setOf("Cizí oslava", "Sledovaná porada", "Moje porada", "Sprint testProjekt"), titles)
+    }
+
+    @Test
+    fun copiesSamsungCalendarIntoGoogleOnce() {
+        FakeCalendarProvider.addCalendar(5, "Můj kalendář", account = "Samsung")
+        val zone = ZoneId.systemDefault()
+        fun at(d: LocalDate, hour: Int) = d.atTime(hour, 0).atZone(zone).toInstant().toEpochMilli()
+        val single = FakeCalendarProvider.addEvent(
+            mapOf(Events.CALENDAR_ID to 5L, Events.TITLE to "Zubař", Events.ALL_DAY to 0, Events.DTSTART to at(day, 9), Events.DTEND to at(day, 10),
+                Events.EVENT_TIMEZONE to zone.id, Events.DELETED to 0),
+        )
+        FakeCalendarProvider.attendees += mutableMapOf(Attendees.EVENT_ID to single, Attendees.ATTENDEE_EMAIL to "jana@gmail.com", Attendees.ATTENDEE_STATUS to 1)
+        val weekly = FakeCalendarProvider.addEvent(
+            mapOf(Events.CALENDAR_ID to 5L, Events.TITLE to "Kurz", Events.ALL_DAY to 0, Events.DTSTART to at(day, 17), Events.DURATION to "P3600S",
+                Events.RRULE to "FREQ=WEEKLY", Events.EVENT_TIMEZONE to zone.id, Events.DELETED to 0),
+        )
+        repository.deleteOccurrence(weekly, at(day.plusWeeks(1), 17))
+        val moved = repository.event(weekly, at(day.plusWeeks(2), 17))!!
+        repository.saveOccurrence(moved.copy(start = moved.start.plusHours(1), end = moved.end.plusHours(1)))
+
+        assertEquals(3, repository.import(repository.copyableEvents(5), 1))
+
+        val copied = FakeCalendarProvider.events.filter { it[Events.CALENDAR_ID] == 1L }
+        val series = copied.single { it[Events.RRULE] != null }
+        val skipped = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(java.time.ZoneOffset.UTC)
+            .format(java.time.Instant.ofEpochMilli(at(day.plusWeeks(1), 17)))
+        assertEquals(skipped, series[Events.EXDATE])
+        val exception = copied.single { it[Events.ORIGINAL_ID] != null }
+        assertEquals(series[Events._ID], exception[Events.ORIGINAL_ID])
+        assertEquals(at(day.plusWeeks(2), 18), exception[Events.DTSTART])
+        val dentist = copied.single { it[Events.TITLE] == "Zubař" }
+        assertTrue(repository.attendees(dentist[Events._ID] as Long).isEmpty())
+
+        // Copying again adds nothing
+        assertEquals(0, repository.import(repository.copyableEvents(5), 1))
     }
 
     @Test

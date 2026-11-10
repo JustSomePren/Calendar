@@ -122,6 +122,11 @@ class Settings(context: Context) {
 
     fun isCreated(eventId: Long): Boolean = eventId in longSet("created_events")
 
+    // Work calendars then show only the events that concern me, personal ones stay whole
+    var onlyMine: Boolean
+        get() = prefs.getBoolean("only_mine", false)
+        set(value) = prefs.edit().putBoolean("only_mine", value).apply()
+
     var notifierStarted: Boolean
         get() = prefs.getBoolean("notifier_started", false)
         set(value) = prefs.edit().putBoolean("notifier_started", value).apply()

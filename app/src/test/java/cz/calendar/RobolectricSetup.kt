@@ -18,6 +18,8 @@ fun setUpFakeCalendar(): Application {
         Manifest.permission.READ_CALENDAR,
         Manifest.permission.WRITE_CALENDAR,
         Manifest.permission.POST_NOTIFICATIONS,
+        // Declared by AndroidX for receivers on older Android, granted on install on a phone
+        "${app.packageName}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
     )
     // WorkManager starts itself on a real phone. Here a fresh test one per test, so background work
     // left over from an earlier test cannot run into the next one.

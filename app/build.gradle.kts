@@ -11,10 +11,10 @@ android {
 
     defaultConfig {
         applicationId = "cz.calendar"
-        minSdk = 31
+        minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "2.0"
+        versionCode = 6
+        versionName = "2.3"
     }
 
     // The key is not in the repository. GitHub Actions gets it from secrets (see README),
@@ -49,7 +49,11 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
         // ScreenshotTour saves pictures of every screen into build/shots
-        unitTests.all { it.systemProperty("roborazzi.test.record", "true") }
+        unitTests.all {
+            it.systemProperty("roborazzi.test.record", "true")
+            // Robolectric downloads older Android versions itself; -ProbolectricRepo=<url> points it to a mirror
+            providers.gradleProperty("robolectricRepo").orNull?.let { url -> it.systemProperty("robolectric.dependency.repo.url", url) }
+        }
     }
 }
 

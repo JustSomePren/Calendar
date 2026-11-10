@@ -37,9 +37,18 @@ class Ranking(
     val isCreated: (Long) -> Boolean,
     val emails: List<String>,
     val keywords: List<String>,
+    val watched: (eventId: Long, seriesId: Long) -> Boolean = { _, _ -> false },
+    val onlyMine: Boolean = false,
 )
 
-fun Settings.ranking() = Ranking(::category, ::isCreated, workEmails, workKeywords)
+fun Settings.ranking() = Ranking(
+    ::category, ::isCreated, workEmails, workKeywords,
+    watched = { id, series -> watchFor(id, series) == Watch.ALWAYS },
+    onlyMine = onlyMine,
+)
+
+// Rank of work events that do not concern me, see eventRank
+private const val OTHER_WORK = 2
 
 data class CalendarEvent(
     val eventId: Long,
@@ -55,6 +64,7 @@ data class CalendarEvent(
     val organizer: String = "",
     val location: String = "",
     val description: String = "",
+    val seriesId: Long = eventId,
 )
 
 data class Attendee(val email: String, val status: Int) {
@@ -133,6 +143,14 @@ class CalendarRepository(private val resolver: ContentResolver) {
         .appendQueryParameter(Calendars.ACCOUNT_TYPE, android.provider.CalendarContract.ACCOUNT_TYPE_LOCAL)
         .build()
 
+    // Sends local changes to the server and fetches new ones, for every account with calendars
+    fun syncAll(calendars: List<CalendarInfo>) {
+        calendars.filter { it.synced && !it.local }
+            .map { android.accounts.Account(it.account, it.accountType) }
+            .distinct()
+            .forEach(::requestCalendarSync)
+    }
+
     // A calendar kept only on this phone, for use without any account
     fun createLocalCalendar(name: String, color: Int): Long {
         val asOwner = localOwner()
@@ -193,6 +211,7 @@ class CalendarRepository(private val resolver: ContentResolver) {
                 organizer = c.getString(8).orEmpty(),
                 location = c.getString(9).orEmpty(),
                 description = c.getString(10).orEmpty(),
+                seriesId = if (c.isNull(7)) c.getLong(0) else c.getLong(7),
             )
             all += event
 
@@ -204,8 +223,10 @@ class CalendarRepository(private val resolver: ContentResolver) {
         }
 
         val ranks = ranking?.let { rank(all, it) }.orEmpty()
+        val onlyMine = ranking?.onlyMine == true
         return result.mapValues { (_, events) ->
             events.map { it.copy(rank = ranks[it.eventId to it.begin] ?: 0) }
+                .filter { !onlyMine || it.rank != OTHER_WORK }
                 .sortedWith(compareBy<CalendarEvent> { it.rank }.thenByDescending { it.allDay || it.multiDay }.thenBy { it.begin })
         }
     }
@@ -220,7 +241,7 @@ class CalendarRepository(private val resolver: ContentResolver) {
                 description = event.description, organizer = event.organizer, account = accounts[event.calendarId].orEmpty(),
                 begin = event.begin, end = event.end, allDay = event.allDay,
             )
-            val mine = upcoming.isMine || ranking.isCreated(event.eventId)
+            val mine = upcoming.isMine || ranking.isCreated(event.eventId) || ranking.watched(event.eventId, event.seriesId)
             (event.eventId to event.begin) to eventRank(ranking.category(event.calendarId), mine) {
                 matchesWorkFilter(upcoming, attendees[event.eventId].orEmpty(), ranking.emails, ranking.keywords)
             }
@@ -478,6 +499,51 @@ class CalendarRepository(private val resolver: ContentResolver) {
             val local = "$calendar|${c.getString(3).orEmpty()}|${c.getLong(4)}"
             c.getLong(0) to listOfNotNull(c.getString(2)?.let { "$calendar|$it" }, local)
         }.filterNotNull().filter { ids == null || it.first in ids }.toMap()
+    }
+
+    // Every event of a calendar as import entries, so copying reuses the import with its duplicate check.
+    // Changed occurrences stay attached to their series, cancelled ones become skipped dates.
+    // Guests are left out, a copy must not send invitations again.
+    fun copyableEvents(calendarId: Long): List<IcsEvent> {
+        data class Row(
+            val id: Long,
+            val originalId: Long?,
+            val originalTime: Long,
+            val cancelled: Boolean,
+            val allDay: Boolean,
+            val excluded: String?,
+        )
+        val rows = query(
+            Events.CONTENT_URI,
+            arrayOf(Events._ID, Events.ORIGINAL_ID, Events.ORIGINAL_INSTANCE_TIME, Events.STATUS, Events.ALL_DAY, Events.EXDATE),
+            "${Events.CALENDAR_ID} = ? AND ${Events.DELETED} = 0",
+            arrayOf(calendarId.toString()),
+        ) { c ->
+            Row(
+                id = c.getLong(0),
+                originalId = if (c.isNull(1)) null else c.getLong(1),
+                originalTime = c.getLong(2),
+                cancelled = c.getInt(3) == Events.STATUS_CANCELED,
+                allDay = c.getInt(4) == 1,
+                excluded = c.getString(5)?.takeIf { it.isNotBlank() },
+            )
+        }
+
+        val skipped = rows.filter { it.originalId != null && it.cancelled }.groupBy({ it.originalId!! }) { row ->
+            val utc = Instant.ofEpochMilli(row.originalTime).atZone(ZoneOffset.UTC)
+            if (row.allDay) utc.format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE).take(8)
+            else utc.format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'"))
+        }
+
+        return rows.filterNot { it.cancelled }.mapNotNull { row ->
+            val draft = event(row.id)?.copy(id = null, attendees = emptyList()) ?: return@mapNotNull null
+            if (row.originalId != null) {
+                IcsEvent(draft.copy(originalId = null), uid = "copy:${row.originalId}", recurrenceId = row.originalTime)
+            } else {
+                val exdates = (listOfNotNull(row.excluded) + skipped[row.id].orEmpty()).joinToString(",").takeIf { it.isNotEmpty() }
+                IcsEvent(draft.copy(excludedDates = exdates?.takeIf { draft.rule != null }), uid = "copy:${row.id}")
+            }
+        }
     }
 
     fun findException(seriesId: Long, instanceBegin: Long): Long? =

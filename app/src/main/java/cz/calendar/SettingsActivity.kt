@@ -93,7 +93,7 @@ class SettingsActivity : ComponentActivity() {
 @Composable
 private fun SettingsScreen(repository: CalendarRepository, settings: Settings, onClose: () -> Unit) {
     val context = LocalContext.current
-    var calendars by remember { mutableStateOf(emptyList<CalendarInfo>()) }
+    var all by remember { mutableStateOf(emptyList<CalendarInfo>()) }
     // Read again whenever the phone's calendar store changes, e.g. a sync still running when this opened
     var changes by remember { mutableIntStateOf(0) }
     DisposableEffect(Unit) {
@@ -106,8 +106,9 @@ private fun SettingsScreen(repository: CalendarRepository, settings: Settings, o
         onDispose { context.contentResolver.unregisterContentObserver(observer) }
     }
     LaunchedEffect(changes) {
-        calendars = withContext(Dispatchers.IO) { repository.calendars().filter { it.synced } }
+        all = withContext(Dispatchers.IO) { repository.calendars() }
     }
+    val calendars = all.filter { it.synced }
 
     Scaffold(
         topBar = {
@@ -132,6 +133,7 @@ private fun SettingsScreen(repository: CalendarRepository, settings: Settings, o
             CalendarsSection(calendars, settings)
             WorkFilterSection(settings)
             NotificationsSection()
+            CopySection(all, calendars.filter { it.writable }, repository)
             ImportSection(calendars.filter { it.writable }, repository, settings)
             PhotosSection(settings)
             BackupSection(settings)
@@ -245,6 +247,51 @@ private fun NotificationsSection() {
 private fun defaultImportCalendar(calendars: List<CalendarInfo>, settings: Settings): Long? =
     (calendars.find { it.id == settings.lastCalendar } ?: calendars.find { it.primary } ?: calendars.firstOrNull())?.id
 
+// Copies a whole calendar into another, e.g. Samsung's calendar into Google on the old phone
+@Composable
+private fun CopySection(sources: List<CalendarInfo>, targets: List<CalendarInfo>, repository: CalendarRepository) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var from by rememberSaveable { mutableStateOf<Long?>(null) }
+    var to by rememberSaveable { mutableStateOf<Long?>(null) }
+    var copying by remember { mutableStateOf(false) }
+
+    SectionTitle("Zkopírovat kalendář")
+    Hint(
+        "Na starém telefonu Samsung tu vyber Samsung kalendář (nebo „Můj kalendář“) a jako cíl svůj Google kalendář. " +
+            "Události se zkopírují i s opakováním a hned se odešlou na Google, který je pošle do nového telefonu. " +
+            "Že dorazily, ověříš na calendar.google.com. Kopírovat jde opakovaně, " +
+            "události, které už v cíli jsou, se přeskočí. Účastníci se nekopírují, aby nikomu nepřišla pozvánka znovu.",
+    )
+    ChoiceRow("Z kalendáře", sources.filter { it.id != to }.map { it.id to "${it.name} (${it.account})" }, from, enabled = true) { from = it }
+    ChoiceRow("Do kalendáře", targets.filter { it.id != from }.map { it.id to "${it.name} (${it.account})" }, to, enabled = true) { to = it }
+    OutlinedButton(
+        enabled = from != null && to != null && !copying,
+        onClick = {
+            val source = from ?: return@OutlinedButton
+            val target = to ?: return@OutlinedButton
+            copying = true
+            scope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val events = repository.copyableEvents(source)
+                        val added = repository.import(events, target)
+                        // Send the copies to the server right away instead of waiting for the next sync
+                        repository.syncAll(targets.filter { it.id == target })
+                        events.size to added
+                    }
+                }
+                copying = false
+                val message = result.fold(
+                    onSuccess = { (found, added) -> "Zkopírováno $added z $found událostí, ${found - added} už v cíli bylo." },
+                    onFailure = { "Kopírování se nepovedlo." },
+                )
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            }
+        },
+    ) { Text(if (copying) "Kopíruji…" else "Zkopírovat") }
+}
+
 @Composable
 private fun ImportSection(calendars: List<CalendarInfo>, repository: CalendarRepository, settings: Settings) {
     val context = LocalContext.current
@@ -278,10 +325,9 @@ private fun ImportSection(calendars: List<CalendarInfo>, repository: CalendarRep
         }
     }
 
-    SectionTitle("Import ze Samsung Kalendáře")
+    SectionTitle("Import ze souboru")
     Hint(
-        "Samsung kalendář se na Pixelu synchronizovat nedá. Na telefonu Samsung události vyexportuj nebo sdílej " +
-            "jako soubor .ics nebo .vcs (postup se liší podle verze One UI), pošli si ho do tohoto telefonu a vyber ho tady. " +
+        "Soubor .ics nebo .vcs (např. sdílená událost ze Samsung Kalendáře) pošli do tohoto telefonu a vyber ho tady. " +
             "Události, které už v kalendáři jsou, se přeskočí.",
     )
     if (calendars.isEmpty()) {

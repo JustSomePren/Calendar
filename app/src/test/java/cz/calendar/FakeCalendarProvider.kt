@@ -71,6 +71,9 @@ class FakeCalendarProvider : ContentProvider() {
                 selection.orEmpty().startsWith(Events.ORIGINAL_ID) -> events.filter {
                     it[Events.ORIGINAL_ID].toString() == args!![0] && (args.size == 1 || it[Events.ORIGINAL_INSTANCE_TIME].toString() == args[1])
                 }
+                selection.orEmpty().startsWith(Events.CALENDAR_ID) && args?.size == 1 -> events.filter {
+                    it[Events.CALENDAR_ID].toString() == args[0] && it[Events.DELETED] != 1
+                }
                 args != null -> events.filter {
                     it[Events.CALENDAR_ID].toString() == args[0] && it[Events.TITLE] == args[1] && it[Events.DTSTART].toString() == args[2]
                 }
